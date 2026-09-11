@@ -1,7 +1,7 @@
 {
-  "name": "EdgeScope",
-  "short_name": "EdgeScope",
-  "description": "EdgeStreet scoping and BOQ tool",
+  "name": "Edge Measure",
+  "short_name": "Edge Measure",
+  "description": "EdgeStreet measuring, scoping and BOQ tool",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a0a0a",

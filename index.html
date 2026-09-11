@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>The Edge</title>
+<title>Edge Measure</title>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-title" content="EdgeScope"/>
+<meta name="apple-mobile-web-app-title" content="Edge Measure"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#a78bfa"/>
@@ -14,6 +14,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="icon-16.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png"/>
 <link rel="apple-touch-icon" sizes="152x152" href="icon-152.png"/>
+<link rel="stylesheet" href="edgebook-creator.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -445,7 +446,7 @@ select.inp{cursor:pointer;}
         <option value="blank">Blank EdgeBook</option>
         <option value="load">Load from library</option>
         <option value="import">Import Excel</option>
-        <option value="build">Build from scratch</option>
+        <option value="build">Guided Office Fit-out Creator</option>
       </select>
     </div>
     <div id="np-library-row" class="auth-field" style="display:none;">
@@ -725,6 +726,7 @@ select.inp{cursor:pointer;}
       <div class="lib-tabs" style="border-bottom:none;">
         <button class="lib-tab active" id="lt-manage-bills" onclick="switchTab('manage-bills')">Manage Bills</button>
         <button class="lib-tab" id="lt-activities" onclick="switchTab('activities')">Manage Activities</button>
+        <button class="lib-tab" id="lt-creator" onclick="switchTab('creator')">Create EdgeBook</button>
         <button class="lib-tab" id="lt-import" onclick="switchTab('import')">Import</button>
       </div>
     </div>
@@ -753,6 +755,11 @@ select.inp{cursor:pointer;}
       </div>
       <div id="activity-add-form" style="display:none;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px;"></div>
       <div id="activities-list"></div>
+    </div>
+
+    <!-- CREATE EDGEBOOK TAB -->
+    <div class="lib-content" id="lc-creator">
+      <div id="edgebook-creator"></div>
     </div>
 
     <!-- IMPORT TAB -->
@@ -1299,7 +1306,7 @@ function switchTab(tab){
   // Map old 'bills' tab to 'manage-bills' since we removed the build tab
   if(tab==='bills') tab='manage-bills';
   activeTab=tab;
-  ['manage-bills','activities','import'].forEach(t=>{
+  ['manage-bills','activities','creator','import'].forEach(t=>{
     const btn=document.getElementById('lt-'+t);
     const con=document.getElementById('lc-'+t);
     if(btn) btn.classList.toggle('active',t===tab);
@@ -1307,6 +1314,7 @@ function switchTab(tab){
   });
   if(tab==='manage-bills') renderBillsBoard();
   else if(tab==='activities') renderActivitiesTab();
+  else if(tab==='creator' && typeof renderEdgebookCreator==='function') renderEdgebookCreator();
 }
 /* ═══════════════════════════════════════════════
    BILLS BOARD
@@ -1404,7 +1412,7 @@ function renderBillsBoard(){
   let html='<div class="board">';
   sb.forEach((bill,bi)=>{
     const color=bill.color||STAGE_PALETTE[bi%STAGE_PALETTE.length];
-    const billNum=bi+1;
+    const billNum=bill.sortNo||bi+1;
     const cats=sortedCats().filter(c=>CAT_BILL[c]===bill.id&&!isProjectOnlyCategory(c));
     const isEditing=openBillPalette===bill.id;
     const swatches=STAGE_PALETTE.map(sw=>`<div class="swatch ${sw===color?'on':''}" style="background:${sw};" onclick="setBillColor('${bill.id}','${sw}',event)" onmousedown="event.stopPropagation()"></div>`).join('');
@@ -2256,7 +2264,7 @@ async function createNewProject(){
       setTimeout(()=>switchTab('import'),300);
     } else if(ebMode === 'build'){
       showPage('setup');showActiveProjectSection();
-      setTimeout(()=>switchTab('manage-bills'),300);
+      setTimeout(()=>switchTab('creator'),300);
     } else {
       showPage('setup');showActiveProjectSection();
     }
@@ -5996,7 +6004,8 @@ function captureAppState(){
     BILLS,CAT_LABELS,CAT_BILL,CAT_ORDER,ACTIVITIES,actNextId,billNextId,
     PROJECT,COMPANY,LOCATIONS,locNextId,areNextId,CAPTURES,capNextId,
     ITEM_TYPES,itemNextId,plansMeta,MEASUREMENTS,planNextId,measNextId,activePlanId,activePlanPage,
-    edgeBookSource:{id:CURRENT_EDGEBOOK_ID,name:CURRENT_EDGEBOOK_NAME,dirty:EDGEBOOK_DIRTY}
+    edgeBookSource:{id:CURRENT_EDGEBOOK_ID,name:CURRENT_EDGEBOOK_NAME,dirty:EDGEBOOK_DIRTY},
+    creatorState:typeof getEdgebookCreatorState==='function'?getEdgebookCreatorState():null
   }));
 }
 
@@ -6023,6 +6032,7 @@ function restoreAppState(data){
   CURRENT_EDGEBOOK_ID=data.edgeBookSource?.id||null;
   CURRENT_EDGEBOOK_NAME=data.edgeBookSource?.name||'';
   EDGEBOOK_DIRTY=!!data.edgeBookSource?.dirty;
+  if(typeof restoreEdgebookCreatorState==='function') restoreEdgebookCreatorState(data.creatorState||null);
   if(EDGEBOOK_DIRTY) markEdgeBookDirty();
   // Normalise cat values — convert display names to keys
   ACTIVITIES.forEach(a=>{
@@ -6128,6 +6138,7 @@ function resetAppState(){
   measureZoom=1;measureOffset={x:0,y:0};
   CURRENT_PROJECT_UPDATED_AT=null;
   CURRENT_EDGEBOOK_ID=null;CURRENT_EDGEBOOK_NAME='';EDGEBOOK_DIRTY=false;
+  if(typeof resetEdgebookCreatorState==='function') resetEdgebookCreatorState();
   _dirtyGeneration=0;_savedGeneration=0;_saveConflict=false;
   // Clear canvas visually
   try{
@@ -6515,6 +6526,7 @@ window.addEventListener('beforeunload',e=>{
   // No session — Home page is already showing with Login button
 })();
 </script>
+<script src="edgebook-creator.js"></script>
 <!-- QUOTE MODAL -->
 <div id="quote-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:28px;width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;">
