@@ -28,6 +28,17 @@ Choose **Build EdgeBook** to use the result in the current project, or **Build &
 
 After building, use **Manage Activities** to customise descriptions and rates, then continue to Measure, Additional Items, and BOQ.
 
+## Live-project improvements to test
+
+1. Measure an m² activity and send it to the BOQ.
+2. On its measurement row, choose **Save for reuse**.
+3. Select another m² activity and choose **Use saved measurement**.
+4. Confirm that the quantity appears under the second activity without another shape being drawn.
+5. Use **Current activity** in the measurement filter and confirm the shared shape remains accessible.
+6. Remove the reused activity from the original measurement row and confirm the original BOQ quantity remains.
+7. Measure a framed window or Venetian blind, enter its height and an identical count, and confirm the BOQ receives length × height × count.
+8. Confirm the Ceilings library includes both new-grid and existing-grid options for 1200 × 600 mm acoustic tiles.
+
 ## Safety rule
 
 The creator will not replace an EdgeBook after plan measurements or scoped quantities have been captured, because those quantities are linked to the existing activity IDs.

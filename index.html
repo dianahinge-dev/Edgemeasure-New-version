@@ -269,6 +269,10 @@ select.inp{cursor:pointer;}
 /* ── NEW PROJECT MODAL ── */
 #new-proj-modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9995;display:flex;align-items:center;justify-content:center;}
 #new-proj-modal.hidden{display:none;}
+#saved-measurements-modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9995;display:flex;align-items:center;justify-content:center;}
+#saved-measurements-modal.hidden{display:none;}
+.saved-measurement-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--border2);border-radius:7px;background:var(--surface2);}
+.saved-measurement-row:hover{border-color:var(--brand);}
 .modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:28px;width:480px;max-width:95vw;}
 .modal-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.04em;margin-bottom:6px;}
 .modal-title span{color:var(--brand);}
@@ -459,6 +463,18 @@ select.inp{cursor:pointer;}
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
       <button class="btn" onclick="closeNewProjModal()">Cancel</button>
       <button id="btn-create-project" class="btn btn-brand" onclick="createNewProject()" style="background:var(--lime);color:var(--lime-dark);border-color:var(--lime);">Create Project →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SAVED MEASUREMENTS MODAL -->
+<div id="saved-measurements-modal" class="hidden">
+  <div class="modal-box" style="width:620px;max-height:82vh;display:flex;flex-direction:column;">
+    <div class="modal-title">Saved <span>Measurements.</span></div>
+    <div class="modal-sub" id="saved-measurements-sub">Choose a previously measured quantity for the current activity.</div>
+    <div id="saved-measurements-list" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:80px;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+      <button class="btn" onclick="closeSavedMeasurements()">Close</button>
     </div>
   </div>
 </div>
@@ -868,11 +884,21 @@ select.inp{cursor:pointer;}
       <!-- ROW 3: Activity-selected tool + Utilities -->
       <div style="padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-shrink:0;">
         <div id="active-capture-tool" style="font-size:10px;font-weight:700;color:var(--brand);border:1px solid var(--brand);border-radius:4px;padding:4px 10px;white-space:nowrap;">Select an activity</div>
+        <button onclick="openSavedMeasurements()" title="Use a measurement that was previously saved for reuse"
+          style="padding:4px 10px;border-radius:4px;border:1.5px solid var(--lime);background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--lime);white-space:nowrap;">Use saved measurement</button>
         <div style="width:1px;height:20px;background:var(--border2);flex-shrink:0;"></div>
         <button id="btn-undo" onclick="undoAction()" title="Undo (Ctrl+Z)"
           style="padding:4px 10px;border-radius:4px;border:1.5px solid var(--brand);background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--brand);">↩ Undo</button>
         <button id="btn-toggle-all" onclick="toggleAllMeasurements()"
           style="padding:4px 10px;border-radius:4px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--text);">Hide all</button>
+        <select id="measurement-view-filter" onchange="setMeasurementViewFilter(this.value)" title="Filter the measurements shown on the plan"
+          style="padding:4px 8px;border-radius:4px;border:1.5px solid var(--border2);background:var(--surface);font-size:10px;font-weight:700;color:var(--text);outline:none;">
+          <option value="all">All measurements</option>
+          <option value="current">Current activity</option>
+          <option value="sent">Sent to BOQ</option>
+          <option value="unsent">Unsent only</option>
+          <option value="saved">Saved for reuse</option>
+        </select>
         <button onclick="clearMeasurements()"
           style="padding:4px 10px;border-radius:4px;border:1.5px solid var(--red);background:transparent;cursor:pointer;font-size:11px;font-weight:700;color:var(--red);">✕ Clear</button>
         <button id="btn-cancel" onclick="cancelMeasurement()"
@@ -1093,6 +1119,7 @@ let activePlanPage=1;
 let measureTool='calibrate';
 let measurePoints=[];
 let measureZoom=1;
+let measurementViewFilter='all';
 let measureOffset={x:0,y:0};
 let _pdfDoc=null;
 let _renderTask=null;
@@ -3652,7 +3679,9 @@ function setMeasureColor(c,manual=true){
   redrawCanvas();
 }
 function activityTick(actId){
-  return MEASUREMENTS.some(m=>m.planId===activePlanId&&m.locId===measureContext.locId&&m.areaId===measureContext.areaId&&m.actId===actId&&m.type!=='calibrate')?'✓ ':'';
+  const direct=MEASUREMENTS.some(m=>m.planId===activePlanId&&m.locId===measureContext.locId&&m.areaId===measureContext.areaId&&m.actId===actId&&m.type!=='calibrate');
+  const reused=CAPTURES.some(c=>c.sourcePlanId===activePlanId&&c.locId===measureContext.locId&&c.areaId===measureContext.areaId&&c.actId===actId);
+  return direct||reused?'✓ ':'';
 }
 function activeContextArea(){
   return LOCATIONS.find(l=>l.id===measureContext.locId)?.areas.find(a=>a.id===measureContext.areaId)||null;
@@ -3836,6 +3865,10 @@ function updateMeasureContext(field,value){
     measureContext.mode=value;
   }
   renderContextBar();
+  if(field==='actId'&&measurementViewFilter==='current'){
+    renderMeasurementsList();
+    redrawCanvas();
+  }
 }
 
 function renderMeasurePage(){
@@ -3844,6 +3877,117 @@ function renderMeasurePage(){
   renderContextBar();
   if(activePlanId) renderCanvas();
   renderMeasurementsList();
+}
+
+function measurementPassesView(m){
+  if(m.type==='calibrate') return measurementViewFilter==='all';
+  if(measurementViewFilter==='current'){
+    if(!measureContext.actId) return false;
+    return m.actId===measureContext.actId||CAPTURES.some(c=>c.sourceMeasurementId===m.id&&c.actId===measureContext.actId);
+  }
+  if(measurementViewFilter==='sent') return !!m.sent;
+  if(measurementViewFilter==='unsent') return !m.sent;
+  if(measurementViewFilter==='saved') return !!m.savedForReuse;
+  return true;
+}
+
+function setMeasurementViewFilter(value){
+  measurementViewFilter=value||'all';
+  renderMeasurementsList();
+  redrawCanvas();
+}
+
+function measurementGeometryKind(m){
+  if(m?.mode==='count') return 'count';
+  if(m?.type==='area') return 'area';
+  if(m?.type==='perimeter') return 'perimeter';
+  return 'linear';
+}
+
+function measurementMatchesActivity(m,act){
+  if(!m||!act||measurementGeometryKind(m)!==getCaptureProfile(act.captureMethod).tool) return false;
+  const sourceAct=ACTIVITIES.find(a=>a.id===m.actId);
+  const normalUnit=value=>String(value||'').trim().toLowerCase().replace('m2','m²');
+  return !sourceAct||normalUnit(sourceAct.unit)===normalUnit(act.unit);
+}
+
+function saveMeasurementForReuse(id){
+  const m=MEASUREMENTS.find(row=>row.id===id);
+  if(!m||!m.sent) return alert('Send this measurement to the BOQ before saving it for reuse.');
+  m.savedForReuse=true;
+  renderMeasurementsList();
+  scheduleAutoSave();
+  const act=ACTIVITIES.find(a=>a.id===m.actId);
+  setMeasureStatus(`✓ Saved for reuse — ${act?.description||'measurement'}`);
+}
+
+function closeSavedMeasurements(){
+  document.getElementById('saved-measurements-modal')?.classList.add('hidden');
+}
+
+function openSavedMeasurements(){
+  const targetAct=ACTIVITIES.find(a=>a.id===measureContext.actId);
+  if(!targetAct) return alert('Select the activity you are measuring for first, then choose Use saved measurement.');
+  const modal=document.getElementById('saved-measurements-modal');
+  const list=document.getElementById('saved-measurements-list');
+  const sub=document.getElementById('saved-measurements-sub');
+  if(!modal||!list) return;
+  const saved=MEASUREMENTS.filter(m=>m.sent&&m.savedForReuse&&m.type!=='calibrate'&&measurementMatchesActivity(m,targetAct));
+  if(sub) sub.textContent=`Choose a compatible saved measurement for ${targetAct.description}.`;
+  if(!saved.length){
+    list.innerHTML='<div style="padding:24px;text-align:center;color:var(--text4);font-size:12px;border:1px dashed var(--border2);border-radius:7px;">No compatible measurements have been saved yet. Use “Save for reuse” on a sent measurement first.</div>';
+  }else{
+    list.innerHTML=saved.map(m=>{
+      const sourceAct=ACTIVITIES.find(a=>a.id===m.actId);
+      const loc=LOCATIONS.find(l=>l.id===m.locId);
+      const area=loc?.areas.find(a=>a.id===m.areaId);
+      const plan=PLANS.find(p=>p.id===m.planId);
+      const preview=buildScopeCaptureFromMeasurement(m,targetAct);
+      const alreadyUsed=CAPTURES.some(c=>c.sourceMeasurementId===m.id&&c.actId===targetAct.id&&c.locId===m.locId&&c.areaId===m.areaId);
+      return `<div class="saved-measurement-row">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.35;">${escHtml(sourceAct?.description||m.label||'Saved measurement')}</div>
+          <div style="font-size:11px;color:var(--brand);font-weight:700;margin-top:3px;">${Math.abs(Number(preview.total)||0).toFixed(3)} ${targetAct.unit}</div>
+          <div style="font-size:10px;color:var(--text4);margin-top:3px;">${escHtml([loc?.name,area?.name,plan?.name,`page ${m.page}`].filter(Boolean).join(' · '))}</div>
+        </div>
+        <button class="btn ${alreadyUsed?'':'btn-brand'}" ${alreadyUsed?'disabled':''} onclick="useSavedMeasurement(${m.id})" style="font-size:10px;white-space:nowrap;${alreadyUsed?'opacity:0.55;':''}">${alreadyUsed?'Already used':'Use measurement →'}</button>
+      </div>`;
+    }).join('');
+  }
+  modal.classList.remove('hidden');
+}
+
+function useSavedMeasurement(id){
+  const m=MEASUREMENTS.find(row=>row.id===id&&row.savedForReuse&&row.sent);
+  const targetAct=ACTIVITIES.find(a=>a.id===measureContext.actId);
+  if(!m||!targetAct) return;
+  if(!measurementMatchesActivity(m,targetAct)) return alert('That saved measurement is not compatible with this activity’s capture method.');
+  if(CAPTURES.some(c=>c.sourceMeasurementId===m.id&&c.actId===targetAct.id&&c.locId===m.locId&&c.areaId===m.areaId)){
+    return alert('This saved measurement is already used for that activity in the same area.');
+  }
+  const next=buildScopeCaptureFromMeasurement(m,targetAct);
+  const sourceAct=ACTIVITIES.find(a=>a.id===m.actId);
+  next.sourceType='plan-reuse';
+  next.reusedFromMeasurementId=m.id;
+  next.notes=`${next.notes||'From plan'} · Reused from ${sourceAct?.description||'saved measurement'}`;
+  CAPTURES.push({id:capNextId++,...next});
+  closeSavedMeasurements();
+  saveToStorage();
+  renderScope();
+  renderMeasurementsList();
+  setMeasureStatus(`✓ Saved measurement added to BOQ — ${targetAct.description} · ${Math.abs(Number(next.total)||0).toFixed(3)}`);
+}
+
+function removeReusedMeasurementCapture(captureId){
+  const capture=CAPTURES.find(c=>c.id===captureId&&c.reusedFromMeasurementId);
+  if(!capture) return;
+  const act=ACTIVITIES.find(a=>a.id===capture.actId);
+  CAPTURES=CAPTURES.filter(c=>c.id!==captureId);
+  saveToStorage();
+  renderScope();
+  renderMeasurementsList();
+  redrawCanvas();
+  setMeasureStatus(`Removed reused quantity${act?` — ${act.description}`:''}. The original measurement was not changed.`);
 }
 
 function handlePlanUpload(input){
@@ -4103,8 +4247,10 @@ function drawCanvas(img,pageData,plan,mouseX,mouseY){
   ctx.clearRect(0,0,pageData.w,pageData.h);
   ctx.drawImage(img,0,0,pageData.w,pageData.h);
   // Draw saved measurements for this page
-  const pageMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage);
-  pageMeasurements.forEach(m=>drawMeasurement(ctx,m,plan,m.id===_hoverMeasurementId));
+  const pageMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage&&measurementPassesView(m));
+  pageMeasurements.filter(m=>m.id!==_hoverMeasurementId).forEach(m=>drawMeasurement(ctx,m,plan,false));
+  const hovered=pageMeasurements.find(m=>m.id===_hoverMeasurementId);
+  if(hovered) drawMeasurement(ctx,hovered,plan,true);
   // Draw current in-progress points with mouse position
   if(measurePoints.length>0) drawInProgress(ctx,plan,mouseX,mouseY);
 }
@@ -4305,17 +4451,33 @@ function measurementProfile(m){
 
 function drawMeasurementLabel(ctx,m,x,y,color){
   const S=1/Math.max(measureZoom,0.05);
-  const act=ACTIVITIES.find(a=>a.id===m.actId);
+  const displayActId=measurementViewFilter==='current'&&CAPTURES.some(c=>c.sourceMeasurementId===m.id&&c.actId===measureContext.actId)
+    ?measureContext.actId:m.actId;
+  const act=ACTIVITIES.find(a=>a.id===displayActId);
   const unit=m.mode==='count'?'no':m.type==='area'?'m²':m.type==='perimeter'?'lm':'m';
   const value=m.mode==='count'?(m.points?.length||0):Number(m.valueM||0).toFixed(2);
   const label=`${act?.description||m.label||'Measurement'} · ${value}${unit}`;
-  ctx.font=`bold ${13*S}px Arial`;
+  ctx.font=`bold ${12*S}px Arial`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  const tw=ctx.measureText(label).width;
-  const pad=7*S,ph=24*S;
-  ctx.fillStyle='rgba(0,0,0,0.82)';
-  ctx.beginPath();ctx.roundRect(x-tw/2-pad,y-ph/2,tw+pad*2,ph,5*S);ctx.fill();
-  ctx.fillStyle=color;ctx.fillText(label,x,y);
+  const maxWidth=250*S;
+  const words=label.split(/\s+/);
+  const lines=[];
+  let line='';
+  words.forEach(word=>{
+    const next=line?`${line} ${word}`:word;
+    if(line&&ctx.measureText(next).width>maxWidth){lines.push(line);line=word;}
+    else line=next;
+  });
+  if(line) lines.push(line);
+  const padX=8*S,padY=5*S,lineHeight=15*S;
+  const boxWidth=Math.min(maxWidth,Math.max(...lines.map(row=>ctx.measureText(row).width)))+padX*2;
+  const boxHeight=lines.length*lineHeight+padY*2;
+  ctx.fillStyle='rgba(255,255,255,0.96)';
+  ctx.strokeStyle='rgba(0,0,0,0.35)';
+  ctx.lineWidth=1*S;
+  ctx.beginPath();ctx.roundRect(x-boxWidth/2,y-boxHeight/2,boxWidth,boxHeight,4*S);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#111111';
+  lines.forEach((row,index)=>ctx.fillText(row,x,y-(lines.length-1)*lineHeight/2+index*lineHeight));
 }
 
 function drawMeasurement(ctx,m,plan,highlight,showLabel=highlight){
@@ -4636,8 +4798,8 @@ function pointInPolygon(x,y,points){
 }
 function measurementAtPoint(x,y){
   const tolerance=14/Math.max(measureZoom,0.05);
-  const candidates=MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage&&!m.hidden&&m.type!=='calibrate').reverse();
-  return candidates.find(m=>{
+  const candidates=MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage&&!m.hidden&&m.type!=='calibrate'&&measurementPassesView(m));
+  const hits=candidates.filter(m=>{
     if(m.mode==='count') return (m.points||[]).some(p=>Math.hypot(x-p.x,y-p.y)<=tolerance);
     const groups=m.isGroup&&m.segments?.length?m.segments.map(s=>s.points):[m.points||[]];
     return groups.some(points=>{
@@ -4646,7 +4808,17 @@ function measurementAtPoint(x,y){
       if(points.length>2&&distanceToSegment(x,y,points[points.length-1],points[0])<=tolerance) return true;
       return false;
     });
-  })||null;
+  });
+  if(!hits.length) return null;
+  const polygonArea=m=>{
+    const points=m.points||[];
+    if(points.length<3) return Number.POSITIVE_INFINITY;
+    let sum=0;
+    for(let i=0,j=points.length-1;i<points.length;j=i++) sum+=points[j].x*points[i].y-points[i].x*points[j].y;
+    return Math.abs(sum/2);
+  };
+  const priority=m=>m.mode==='count'?0:m.type==='linear'?1:m.type==='perimeter'?2:3;
+  return hits.sort((a,b)=>priority(a)-priority(b)||polygonArea(a)-polygonArea(b)||b.id-a.id)[0];
 }
 
 function setupCanvasEvents(canvas){
@@ -5035,9 +5207,9 @@ function finishPolygon(){
 function renderMeasurementsList(){
   const el=document.getElementById('measurements-list');
   if(!el) return;
-  const planMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId);
+  const planMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId&&measurementPassesView(m));
   if(!planMeasurements.length){
-    el.innerHTML='<div style="padding:16px 14px;text-align:center;color:var(--text4);font-size:12px;">No measurements yet.</div>';
+    el.innerHTML=`<div style="padding:16px 14px;text-align:center;color:var(--text4);font-size:12px;">${measurementViewFilter==='all'?'No measurements yet.':'No measurements match this filter.'}</div>`;
     return;
   }
   const locOpts='<option value="">— location —</option>'+LOCATIONS.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
@@ -5067,6 +5239,25 @@ function renderMeasurementsList(){
       isDeduct?'border-color:var(--red);color:var(--red);':'border-color:var(--brand);color:var(--brand);';
     const sentLabel=m.sent&&!m.editing?'✎ Edit sent measurement':m.sent&&m.editing?'↻ Update Scope':isDeduct?'⊟ Send as deduction →':isAdd?'⊕ Send to Scope →':'→ Send to Scope';
     const sentAction=m.sent&&!m.editing?`beginMeasurementEdit(${m.id})`:`sendMeasurementToScope(${m.id})`;
+    const sentButtons=locked?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;">
+        <button class="btn" onclick="beginMeasurementEdit(${m.id})" style="font-size:10px;padding:5px;border-color:#22c55e;color:#22c55e;font-weight:700;">✎ Edit sent measurement</button>
+        <button class="btn" onclick="saveMeasurementForReuse(${m.id})" ${m.savedForReuse?'disabled':''}
+          style="font-size:10px;padding:5px;border-color:var(--lime);color:var(--lime);font-weight:700;${m.savedForReuse?'opacity:0.55;':''}">${m.savedForReuse?'✓ Saved for reuse':'Save for reuse'}</button>
+      </div>`:`<button class="btn" onclick="${sentAction}"
+          style="font-size:10px;padding:5px;width:100%;transition:all 0.2s;margin-top:4px;${sentStyle}">
+          ${sentLabel}
+        </button>`;
+    const reusedCaptures=CAPTURES.filter(c=>c.reusedFromMeasurementId===m.id);
+    const reusedHtml=reusedCaptures.length?`<div style="margin-top:7px;padding:6px 7px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);">
+      <div style="font-size:9px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;">Also used for</div>
+      ${reusedCaptures.map(c=>{
+        const linkedAct=ACTIVITIES.find(a=>a.id===c.actId);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;color:var(--text3);padding:2px 0;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(linkedAct?.description||'Activity')}">${escHtml(linkedAct?.description||'Activity')}</span>
+          <button class="del-btn" onclick="removeReusedMeasurementCapture(${c.id})" title="Remove this reused BOQ quantity">✕</button>
+        </div>`;
+      }).join('')}
+    </div>`:'';
 
     if(m.type==='calibrate') return `<div class="measurement-card" style="border-left:3px solid ${color};opacity:${m.hidden?0.5:1};">
       <div style="font-size:10px;font-weight:700;color:${color};margin-bottom:4px;">⚖ Calibration</div>
@@ -5160,18 +5351,23 @@ function renderMeasurementsList(){
         ${(()=>{
           const actM=m.actId?ACTIVITIES.find(a=>a.id===m.actId):null;
           const isWallH=actM&&isWallCaptureMethod(actM.captureMethod);
-          return isWallH?`<div style="display:flex;align-items:center;gap:4px;margin-top:4px;">
-            <span style="font-size:10px;color:var(--brand);white-space:nowrap;">Wall H (m):</span>
-            <input type="text" inputmode="decimal" placeholder="e.g. 2.7 or 2,7" ${inputLock}
-              value="${m.wallHeight||''}"
-              style="flex:1;background:var(--surface2);border:1px solid var(--brand);border-radius:4px;padding:3px 6px;font-size:11px;color:var(--text);outline:none;"
-              onchange="updateMeasurement(${m.id},'wallHeight',this.value)"/>
-          </div>`:'';
+          return isWallH?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px;">
+            <div><div style="font-size:9px;color:var(--brand);margin-bottom:2px;">HEIGHT (m)</div>
+              <input type="text" inputmode="decimal" placeholder="e.g. 2.7 or 2,7" ${inputLock}
+                value="${m.wallHeight||''}"
+                style="width:100%;background:var(--surface2);border:1px solid var(--brand);border-radius:4px;padding:3px 6px;font-size:11px;color:var(--text);outline:none;"
+                onchange="updateMeasurement(${m.id},'wallHeight',this.value)"/>
+            </div>
+            <div><div style="font-size:9px;color:var(--brand);margin-bottom:2px;">COUNT (identical)</div>
+              <input type="number" min="1" step="1" ${inputLock} value="${m.repeatCount||1}"
+                style="width:100%;background:var(--surface2);border:1px solid var(--brand);border-radius:4px;padding:3px 6px;font-size:11px;color:var(--text);outline:none;"
+                onchange="updateMeasurement(${m.id},'repeatCount',this.value)"/>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--brand);font-weight:700;margin-top:4px;">${m.valueM.toFixed(3)}m × ${m.wallHeight||'?'}m × ${m.repeatCount||1} = ${m.wallHeight?(m.valueM*m.wallHeight*(m.repeatCount||1)).toFixed(3):'?'}m²</div>`:'';
         })()}
-        <button class="btn" onclick="${sentAction}"
-          style="font-size:10px;padding:5px;width:100%;transition:all 0.2s;margin-top:4px;${sentStyle}">
-          ${sentLabel}
-        </button>
+        ${sentButtons}
+        ${reusedHtml}
       </div>
     </div>`;
   }).join('');
@@ -5224,6 +5420,10 @@ function updateMeasurement(id,field,value){
     m.actId=nextActId;
   } else if(field==='wallHeight'){
     m.wallHeight=parseLocaleNumber(value)||null;
+    renderMeasurementsList();
+  } else if(field==='repeatCount'){
+    m.repeatCount=Math.max(1,parseInt(value)||1);
+    renderMeasurementsList();
   } else if(field==='deductCount'){
     m.deductCount=Math.max(1,parseInt(value)||1);
     renderMeasurementsList();
@@ -5265,9 +5465,11 @@ function isWallCaptureMethod(method){
 function buildScopeCaptureFromMeasurement(m,act){
   const it=m.deductTypeId?ITEM_TYPES.find(d=>d.id===m.deductTypeId):null;
   const isCountMode=m.mode==='count';
-  const count=isCountMode?(m.points?.length||0):(m.deductCount||1);
+  const count=isCountMode?(m.points?.length||0):(m.repeatCount||m.deductCount||1);
   const method=act.captureMethod||'COUNT';
   const normalMethod=String(method).trim().toUpperCase();
+  const wallMethod=isWallCaptureMethod(method);
+  const wallH=wallMethod&&m.wallHeight?parseFloat(m.wallHeight):null;
   let total,notes;
   if(it&&it.sign==='deduct'){
     if(isCountMode){
@@ -5284,14 +5486,14 @@ function buildScopeCaptureFromMeasurement(m,act){
     total=count;
     notes=`${count} × ${it?it.name:act.description} counted on plan`;
   }else{
-    const wallMethod=isWallCaptureMethod(method);
-    const wallH=wallMethod&&m.wallHeight?parseFloat(m.wallHeight):null;
-    total=wallMethod&&wallH?parseFloat(m.valueM.toFixed(3))*wallH:m.valueM;
-    notes=m.label||'From plan';
+    total=wallMethod&&wallH?parseFloat(m.valueM.toFixed(3))*wallH*count:m.valueM;
+    notes=wallMethod&&wallH&&count>1
+      ?`${m.valueM.toFixed(3)}m × ${wallH}m × ${count}`
+      :(m.label||'From plan');
   }
   const cap={
-    locId:m.locId,areaId:m.areaId,actId:m.actId,
-    count:isCountMode?count:null,length:null,width:null,height:null,qty:null,total,notes,
+    locId:m.locId,areaId:m.areaId,actId:act.id,
+    count:isCountMode?count:null,length:null,width:null,height:null,qty:wallH&&count>1?count:null,total,notes,
     sourceType:'plan',sourceMeasurementId:m.id,sourcePlanId:m.planId,sourcePlanPage:m.page,locked:true
   };
   if(!isCountMode&&!(it&&it.sign==='deduct')){
@@ -5305,12 +5507,26 @@ function buildScopeCaptureFromMeasurement(m,act){
 
 function findLinkedScopeCapture(m,next){
   let cap=m.scopeCaptureId?CAPTURES.find(c=>c.id===m.scopeCaptureId):null;
-  if(!cap) cap=CAPTURES.find(c=>c.sourceMeasurementId===m.id);
+  if(!cap) cap=CAPTURES.find(c=>c.sourceMeasurementId===m.id&&!c.reusedFromMeasurementId);
   if(!cap&&m.sent){
     const legacy=CAPTURES.filter(c=>!c.sourceMeasurementId&&c.locId===next.locId&&c.areaId===next.areaId&&c.actId===next.actId&&Math.abs((Number(c.total)||0)-(Number(next.total)||0))<0.0005);
     if(legacy.length===1) cap=legacy[0];
   }
   return cap||null;
+}
+
+function syncReusedCaptures(m){
+  CAPTURES.filter(c=>c.reusedFromMeasurementId===m.id).forEach(existing=>{
+    const targetAct=ACTIVITIES.find(a=>a.id===existing.actId);
+    if(!targetAct||!measurementMatchesActivity(m,targetAct)) return;
+    const stableId=existing.id;
+    const next=buildScopeCaptureFromMeasurement(m,targetAct);
+    next.sourceType='plan-reuse';
+    next.reusedFromMeasurementId=m.id;
+    const sourceAct=ACTIVITIES.find(a=>a.id===m.actId);
+    next.notes=`${next.notes||'From plan'} · Reused from ${sourceAct?.description||'saved measurement'}`;
+    Object.assign(existing,next,{id:stableId});
+  });
 }
 function migrateLegacyMeasurementLinks(){
   MEASUREMENTS.filter(m=>m.sent&&!m.scopeCaptureId&&m.type!=='calibrate').forEach(m=>{
@@ -5368,6 +5584,7 @@ function sendMeasurementToScope(id,options={}){
   m.sent=true;
   m.editing=false;
   m.needsScopeUpdate=false;
+  syncReusedCaptures(m);
   saveToStorage();
   renderMeasurementsList();
   const sign=it&&it.sign==='deduct'?'⊟':'⊕';
@@ -5399,6 +5616,7 @@ function duplicateMeasurement(id){
   copy.editing=false;
   copy.needsScopeUpdate=false;
   delete copy.scopeCaptureId;
+  delete copy.savedForReuse;
   copy.label=original.label?`${original.label} copy`:'';
   MEASUREMENTS.push(copy);
   pushUndo('add_measurement',{id:copy.id});
@@ -5419,9 +5637,12 @@ function toggleAllMeasurements(){
 function deleteMeasurement(id){
   const measurement=MEASUREMENTS.find(m=>m.id===id);
   if(!measurement) return;
-  const linked=CAPTURES.find(c=>c.id===measurement.scopeCaptureId)||CAPTURES.find(c=>c.sourceMeasurementId===measurement.id);
-  if(linked&&!confirm('Delete this plan measurement and its linked Scope quantity? This cannot be undone.')) return;
-  if(linked) CAPTURES=CAPTURES.filter(c=>c.id!==linked.id);
+  const linked=CAPTURES.filter(c=>c.id===measurement.scopeCaptureId||c.sourceMeasurementId===measurement.id);
+  if(linked.length&&!confirm(`Delete this plan measurement and its ${linked.length} linked Scope quantit${linked.length===1?'y':'ies'}? This cannot be undone.`)) return;
+  if(linked.length){
+    const linkedIds=new Set(linked.map(c=>c.id));
+    CAPTURES=CAPTURES.filter(c=>!linkedIds.has(c.id));
+  }
   const idx=MEASUREMENTS.findIndex(m=>m.id===id);
   if(idx>-1) MEASUREMENTS.splice(idx,1);
   redrawCanvas();
@@ -6135,7 +6356,9 @@ function resetAppState(){
   );
   itemNextId=4;
   activePlanId=null;activePlanPage=1;measurePoints=[];
-  measureZoom=1;measureOffset={x:0,y:0};
+  measureZoom=1;measureOffset={x:0,y:0};measurementViewFilter='all';
+  const viewFilter=document.getElementById('measurement-view-filter');
+  if(viewFilter) viewFilter.value='all';
   CURRENT_PROJECT_UPDATED_AT=null;
   CURRENT_EDGEBOOK_ID=null;CURRENT_EDGEBOOK_NAME='';EDGEBOOK_DIRTY=false;
   if(typeof resetEdgebookCreatorState==='function') resetEdgebookCreatorState();
