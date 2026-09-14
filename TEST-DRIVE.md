@@ -16,17 +16,36 @@ For every bill, choose one status:
 
 ## Finish
 
-The review screen provides:
+After Bill 29, the **Customise & Price** screen provides:
 
-- the exact eight-column EdgeBook output;
-- blank selling and cost rates ready for contractor pricing;
+- the selected activities grouped into manageable bills;
+- editable activity descriptions;
+- optional cost and selling rates;
+- editable units and measurement methods;
+- the ability to remove an activity or add another one;
+- a named, reusable EdgeBook saved directly in the app;
 - client scope questions;
 - an internal action list, including linked-scope checks;
 - an Excel draft containing Activities, Client Questions, and Internal Actions.
 
-Choose **Build EdgeBook** to use the result in the current project, or **Build & save for reuse** to add it to the company EdgeBook library.
+Enter an EdgeBook name and choose **Save EdgeBook & finish**. The result must be available in the current project and in the company EdgeBook list for future projects.
 
-After building, use **Manage Activities** to customise descriptions and rates, then continue to Measure, Additional Items, and BOQ.
+Pricing is optional. Use **More options** only when you want to export to Excel or build the EdgeBook for this project without saving it for reuse.
+
+## Team test — Customise & Price
+
+Ask each tester to build a short EdgeBook with at least two included bills, then check:
+
+1. The final screen clearly feels like the next step rather than an Excel export screen.
+2. A generic description can be rewritten and the new wording appears under Manage Activities.
+3. Cost and selling rates accept both `1250.50` and `1 250,50` formats correctly.
+4. Rates may be left blank without stopping the EdgeBook from being built.
+5. An activity can be removed from the final screen.
+6. A completely new activity can be added to a chosen bill with its own unit, rates and measurement method.
+7. The pricing progress figures update while rates and descriptions are entered.
+8. The saved EdgeBook name appears in the reusable company EdgeBook list.
+9. A new project can select that saved EdgeBook without using Excel.
+10. The existing Excel export, edit, import and overwrite route still works.
 
 ## Live-project improvements to test
 

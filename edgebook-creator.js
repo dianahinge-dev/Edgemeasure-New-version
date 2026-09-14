@@ -23,7 +23,7 @@ let EDGEBOOK_CREATOR_STATE=edgeCreatorBlankState();
 function edgeCreatorBlankState(){
   const selected={},custom={};
   OFFICE_FITOUT_BILLS.forEach(function(_,i){selected[i+1]=[];custom[i+1]=[];});
-  return {version:1,screen:"setup",billIndex:0,role:"Main fit-out contractor",information:[],dimension:"",statuses:{},selected:selected,custom:custom,responsible:{},questions:{},overrides:{},generatedAt:null};
+  return {version:1,screen:"setup",billIndex:0,role:"Main fit-out contractor",information:[],dimension:"",statuses:{},selected:selected,custom:custom,responsible:{},questions:{},overrides:{},edgebookName:"",edgebookNameTouched:false,generatedAt:null};
 }
 function getEdgebookCreatorState(){
   edgeCreatorSaveVisibleFields();
@@ -32,6 +32,8 @@ function getEdgebookCreatorState(){
 function restoreEdgebookCreatorState(value){
   EDGEBOOK_CREATOR_STATE=edgeCreatorBlankState();
   if(value&&value.version===1) Object.assign(EDGEBOOK_CREATOR_STATE,JSON.parse(JSON.stringify(value)));
+  if(typeof EDGEBOOK_CREATOR_STATE.edgebookName!=="string") EDGEBOOK_CREATOR_STATE.edgebookName="";
+  if(typeof EDGEBOOK_CREATOR_STATE.edgebookNameTouched!=="boolean") EDGEBOOK_CREATOR_STATE.edgebookNameTouched=false;
   OFFICE_FITOUT_BILLS.forEach(function(_,i){
     const no=i+1;
     if(!Array.isArray(EDGEBOOK_CREATOR_STATE.selected[no])) EDGEBOOK_CREATOR_STATE.selected[no]=[];
@@ -106,7 +108,7 @@ function edgeCreatorInternalActions(){
   if([6,7,8,9,13].some(included)&&state.statuses[4]==="not-required") actions.push("Recheck demolition against the retained and altered partitions, doors, ceilings and joinery.");
   if([22,23,24,25,26].some(included)&&state.statuses[27]==="not-required") actions.push("Confirm that furniture product rates already include delivery and installation.");
   if([22,24,26].some(included)&&included(15)) actions.push("Confirm the electrical boundary: wall socket and fixed wiring versus furniture-fitted modules and leads.");
-  const zeroRates=edgeCreatorOutputRows().filter(function(r){return !(Number(r.selling)>0)||!(Number(r.cost)>0);}).length;
+  const zeroRates=edgeCreatorOutputRows().filter(function(r){return !(edgeCreatorRateNumber(r.selling)>0)||!(edgeCreatorRateNumber(r.cost)>0);}).length;
   if(zeroRates) actions.push("Add or verify selling and cost rates for "+zeroRates+" generated activit"+(zeroRates===1?"y":"ies")+" before issuing a priced BOQ.");
   return Array.from(new Set(actions));
 }
@@ -116,8 +118,10 @@ function edgeCreatorSaveVisibleFields(){
   const no=edgeCreatorCurrentNo();
   const responsible=root.querySelector("#ec-responsible");
   const question=root.querySelector("#ec-question");
+  const edgebookName=root.querySelector("#ec-edgebook-name");
   if(responsible) EDGEBOOK_CREATOR_STATE.responsible[no]=responsible.value.trim();
   if(question) EDGEBOOK_CREATOR_STATE.questions[no]=question.value.trim();
+  if(edgebookName) EDGEBOOK_CREATOR_STATE.edgebookName=edgebookName.value;
 }
 function renderEdgebookCreator(){
   const root=document.getElementById("edgebook-creator");
@@ -137,7 +141,7 @@ function edgeCreatorRenderScreen(){
   const reviewed=Object.keys(state.statuses).filter(function(key){return state.statuses[key];}).length;
   let label="Project setup",pct=0;
   if(state.screen==="bill"){label="Bill "+edgeCreatorCurrentNo()+" of 29 · "+reviewed+" reviewed";pct=Math.round(edgeCreatorCurrentNo()/29*92);}
-  if(state.screen==="review"){label="Review · "+reviewed+" of 29 bills reviewed";pct=100;}
+  if(state.screen==="review"){label="Customise & price · "+reviewed+" of 29 bills reviewed";pct=100;}
   root.querySelector("#ec-progress-label").textContent=label;
   root.querySelector("#ec-progress-bar").style.width=pct+"%";
   root.querySelector("#ec-jump-wrap").innerHTML=state.screen==="setup"?"":'<label class="ec-label" for="ec-jump">Jump to bill</label><select class="inp" id="ec-jump" onchange="edgeCreatorJump(this.value)">'+OFFICE_FITOUT_BILLS.map(function(name,i){return '<option value="'+(i+1)+'" '+(edgeCreatorCurrentNo()===i+1?"selected":"")+'>'+(i+1)+'. '+edgeCreatorEsc(name)+'</option>';}).join("")+'</select>';
@@ -188,28 +192,130 @@ function edgeCreatorBillHtml(){
     [["included","Included"],["others","By others"],["not-required","Not required"],["confirm","To be confirmed"]].map(function(pair){return '<label class="ec-choice"><input type="radio" name="ec-status" '+(status===pair[0]?"checked":"")+' onchange="edgeCreatorSetStatus(&quot;'+pair[0]+'&quot;)"> '+pair[1]+'</label>';}).join("")+'</div></div>'+details+
     '<div class="ec-footer"><button class="btn" onclick="edgeCreatorBack()">← Back</button><button class="btn" onclick="edgeCreatorReview()">Review EdgeBook</button><div class="ec-footer-right"><button class="btn btn-brand" onclick="edgeCreatorNext()">'+(no===29?"Review →":"Next bill →")+'</button></div></div>';
 }
+function edgeCreatorRateNumber(value){
+  const parsed=typeof parseLocaleNumber==="function"?parseLocaleNumber(value):Number(String(value==null?"":value).replace(/\s/g,"").replace(/,/g,""));
+  return Number.isFinite(parsed)&&parsed>=0?parsed:0;
+}
+function edgeCreatorPricingStats(rows){
+  const list=rows||edgeCreatorOutputRows();
+  const cost=list.filter(function(row){return edgeCreatorRateNumber(row.cost)>0;}).length;
+  const selling=list.filter(function(row){return edgeCreatorRateNumber(row.selling)>0;}).length;
+  const priced=list.filter(function(row){return edgeCreatorRateNumber(row.cost)>0&&edgeCreatorRateNumber(row.selling)>0;}).length;
+  const customised=list.filter(function(row){
+    const original=OFFICE_FITOUT_LIBRARY.find(function(item){return item.id===row.id;});
+    return !original||String(row.description||"").trim()!==String(original.description||"").trim();
+  }).length;
+  return {total:list.length,cost:cost,selling:selling,priced:priced,customised:customised};
+}
+function edgeCreatorSuggestedName(){
+  const saved=String(EDGEBOOK_CREATOR_STATE.edgebookName||"").trim();
+  if(EDGEBOOK_CREATOR_STATE.edgebookNameTouched) return saved;
+  if(saved) return saved;
+  if(typeof CURRENT_EDGEBOOK_NAME!=="undefined"&&String(CURRENT_EDGEBOOK_NAME||"").trim()) return String(CURRENT_EDGEBOOK_NAME).trim();
+  const project=String((typeof PROJECT!=="undefined"&&PROJECT.name)||"").trim();
+  return project?project+" Office Fit-out":"Office Fit-out EdgeBook";
+}
+function edgeCreatorReviewRowsHtml(rows){
+  if(!rows.length) return '<div class="ec-empty">No included activities have been selected yet.</div>';
+  const grouped={};
+  rows.forEach(function(row){(grouped[row.billNo]||(grouped[row.billNo]=[])).push(row);});
+  const firstNo=Number(Object.keys(grouped)[0]);
+  return Object.keys(grouped).map(function(no){
+    const billRows=grouped[no],stats=edgeCreatorPricingStats(billRows);
+    return '<details class="ec-price-bill" '+(Number(no)===firstNo?'open':'')+'><summary><span><strong>Bill '+no+' — '+edgeCreatorEsc(OFFICE_FITOUT_BILLS[Number(no)-1]||billRows[0].bill)+'</strong><small>'+billRows.length+' activit'+(billRows.length===1?'y':'ies')+'</small></span><span class="ec-bill-price-status">'+stats.priced+' of '+stats.total+' fully priced</span></summary><div class="ec-price-list">'+
+      billRows.map(function(row){
+        const id=edgeCreatorEsc(row.id),unit=edgeCreatorUnit(row.unit);
+        return '<div class="ec-price-row" data-edge-row="'+id+'">'+
+          '<div class="ec-price-description"><label class="ec-label">Activity description</label><textarea class="inp" rows="2" oninput="edgeCreatorOverride(&quot;'+id+'&quot;,&quot;description&quot;,this.value)">'+edgeCreatorEsc(row.description)+'</textarea><div class="ec-meta">'+edgeCreatorEsc(row.category)+'</div></div>'+
+          '<div><label class="ec-label">Unit</label><select class="inp" onchange="edgeCreatorOverride(&quot;'+id+'&quot;,&quot;unit&quot;,this.value)">'+["item","no","m²","lm","p","sum"].map(function(v){return '<option '+(unit===v?'selected':'')+'>'+v+'</option>';}).join('')+'</select></div>'+
+          '<div><label class="ec-label">Cost rate (R)</label><input class="inp ec-money" type="text" inputmode="decimal" placeholder="0.00" value="'+edgeCreatorEsc(row.cost==null?'':row.cost)+'" oninput="edgeCreatorOverride(&quot;'+id+'&quot;,&quot;cost&quot;,this.value)"></div>'+
+          '<div><label class="ec-label">Selling rate (R)</label><input class="inp ec-money" type="text" inputmode="decimal" placeholder="0.00" value="'+edgeCreatorEsc(row.selling==null?'':row.selling)+'" oninput="edgeCreatorOverride(&quot;'+id+'&quot;,&quot;selling&quot;,this.value)"></div>'+
+          '<div><label class="ec-label">Measure as</label><select class="inp" onchange="edgeCreatorOverride(&quot;'+id+'&quot;,&quot;capture&quot;,this.value)">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return '<option '+(row.capture===v?'selected':'')+'>'+v+'</option>';}).join('')+'</select></div>'+
+          '<button class="ec-remove-row" title="Remove this activity from the generated EdgeBook" onclick="edgeCreatorRemoveReviewRow(&quot;'+id+'&quot;)">Remove</button></div>';
+      }).join('')+'</div></details>';
+  }).join('');
+}
 function edgeCreatorReviewHtml(){
   edgeCreatorSaveVisibleFields();
   const rows=edgeCreatorOutputRows(),state=EDGEBOOK_CREATOR_STATE;
   const reviewed=Object.keys(state.statuses).filter(function(k){return state.statuses[k];}).length;
   const unreviewed=OFFICE_FITOUT_BILLS.map(function(name,i){return {no:i+1,name:name};}).filter(function(x){return !state.statuses[x.no];});
-  const client=edgeCreatorClientQuestions(),actions=edgeCreatorInternalActions();
+  const client=edgeCreatorClientQuestions(),actions=edgeCreatorInternalActions(),prices=edgeCreatorPricingStats(rows);
+  const firstIncluded=Number((rows[0]&&rows[0].billNo)||1);
   const notice=unreviewed.length?'<div class="ec-note ec-danger"><strong>'+unreviewed.length+' bills still need a status.</strong><div class="ec-help">'+unreviewed.map(function(x){return x.no+". "+edgeCreatorEsc(x.name);}).join(", ")+'</div></div>':'<div class="ec-note ec-success"><strong>All 29 bills have been reviewed.</strong><div class="ec-help">The EdgeBook can now be generated without silently omitting an unreviewed section.</div></div>';
-  const table=rows.length?'<div class="ec-table-wrap"><table class="ec-table"><thead><tr><th>Bill No</th><th>Bill</th><th>Category</th><th>Description</th><th>Unit</th><th>Selling Rate</th><th>Cost Rate</th><th>Capture Method</th></tr></thead><tbody>'+
-    rows.map(function(row){return '<tr><td>'+row.billNo+'</td><td>'+edgeCreatorEsc(row.bill)+'</td>'+
-      '<td><input class="inp ec-cat" value="'+edgeCreatorEsc(row.category)+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;category&quot;,this.value)"></td>'+
-      '<td><input class="inp ec-desc" value="'+edgeCreatorEsc(row.description)+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;description&quot;,this.value)"></td>'+
-      '<td><select class="inp" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;unit&quot;,this.value)">'+["item","no","m²","lm","p","sum"].map(function(v){return '<option '+(edgeCreatorUnit(row.unit)===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select></td>'+
-      '<td><input class="inp" type="number" min="0" step="0.01" value="'+edgeCreatorEsc(row.selling||"")+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;selling&quot;,this.value)"></td>'+
-      '<td><input class="inp" type="number" min="0" step="0.01" value="'+edgeCreatorEsc(row.cost||"")+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;cost&quot;,this.value)"></td>'+
-      '<td><select class="inp" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;capture&quot;,this.value)">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return '<option '+(row.capture===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select></td></tr>';}).join("")+
-    '</tbody></table></div>':'<div class="ec-empty">No included activities have been selected yet.</div>';
-  return '<h3 style="font-size:22px;margin-bottom:3px;">Review the generated EdgeBook</h3><p class="ec-help">Descriptions, rates and capture methods can be edited here or later under Manage Activities.</p>'+
-    '<div class="ec-summary"><div><strong>'+reviewed+'</strong><span>Bills reviewed</span></div><div><strong>'+rows.length+'</strong><span>Activities</span></div><div><strong>'+client.length+'</strong><span>Client questions</span></div><div><strong>'+actions.length+'</strong><span>Internal actions</span></div></div>'+notice+table+
-    '<div class="ec-section"><h3 style="font-size:16px;">Client scope questions</h3>'+(client.length?'<ol class="ec-list">'+client.map(function(x){return '<li><strong>'+(x.billNo==="Project"?"Project information":"Bill "+x.billNo+" — "+edgeCreatorEsc(x.bill))+':</strong> '+edgeCreatorEsc(x.text)+'</li>';}).join("")+'</ol>':'<p class="ec-help">No unanswered client questions.</p>')+
-    '<div class="ec-actions"><button class="btn" onclick="edgeCreatorPrintQuestions()">Print / save questions</button></div></div>'+
-    '<div class="ec-section"><h3 style="font-size:16px;">Internal action list</h3>'+(actions.length?'<ul class="ec-list">'+actions.map(function(x){return "<li>"+edgeCreatorEsc(x)+"</li>";}).join("")+'</ul>':'<p class="ec-help">No internal actions generated.</p>')+'</div>'+
-    '<div class="ec-footer"><button class="btn" onclick="edgeCreatorBack()">← Back</button><button class="btn" onclick="edgeCreatorExportDraft()">Export Excel draft</button><div class="ec-footer-right"><button class="btn" onclick="edgeCreatorApply(false)">Build EdgeBook</button><button class="btn btn-brand" onclick="edgeCreatorApply(true)">Build & save for reuse →</button></div></div>';
+  const billOptions=OFFICE_FITOUT_BILLS.map(function(name,i){return '<option value="'+(i+1)+'" '+(firstIncluded===i+1?'selected':'')+'>'+(i+1)+'. '+edgeCreatorEsc(name)+'</option>';}).join('');
+  return '<div class="ec-ready"><div><div class="ec-kicker">Scope complete</div><h3>Your Office Fit-out EdgeBook is ready.</h3><p>Make the descriptions your own and add your prices. You can leave rates blank and complete them later.</p></div><div class="ec-ready-mark">✓</div></div>'+notice+
+    '<div class="ec-summary ec-summary-ready"><div><strong>'+rows.length+'</strong><span>Selected activities</span></div><div><strong id="ec-priced-count">'+prices.priced+' / '+prices.total+'</strong><span>Fully priced</span></div><div><strong id="ec-cost-count">'+prices.cost+'</strong><span>Cost rates added</span></div><div><strong id="ec-selling-count">'+prices.selling+'</strong><span>Selling rates added</span></div><div><strong id="ec-customised-count">'+prices.customised+'</strong><span>Descriptions changed</span></div></div>'+
+    '<div class="ec-price-progress"><span id="ec-price-progress-bar" style="width:'+(prices.total?Math.round(prices.priced/prices.total*100):0)+'%"></span></div>'+
+    '<div class="ec-customise-head"><div><h3>Customise &amp; price</h3><p class="ec-help">Activities are grouped by bill to keep a long EdgeBook manageable. Changes save with the project as you work.</p></div><div class="ec-actions"><button class="btn" onclick="edgeCreatorToggleReviewGroups(true)">Expand all</button><button class="btn" onclick="edgeCreatorToggleReviewGroups(false)">Collapse all</button></div></div>'+edgeCreatorReviewRowsHtml(rows)+
+    '<details class="ec-add-activity"><summary>+ Add another activity</summary><div class="ec-add-grid">'+
+      '<div><label class="ec-label">Bill</label><select class="inp" id="ec-review-bill">'+billOptions+'</select></div>'+
+      '<div><label class="ec-label">Category</label><input class="inp" id="ec-review-category" placeholder="e.g. Special finishes"></div>'+
+      '<div class="ec-add-description"><label class="ec-label">Description</label><input class="inp" id="ec-review-description" placeholder="Describe the activity clearly"></div>'+
+      '<div><label class="ec-label">Unit</label><select class="inp" id="ec-review-unit">'+["item","no","m²","lm","p","sum"].map(function(v){return '<option>'+v+'</option>';}).join('')+'</select></div>'+
+      '<div><label class="ec-label">Cost rate (R)</label><input class="inp" id="ec-review-cost" inputmode="decimal" placeholder="0.00"></div>'+
+      '<div><label class="ec-label">Selling rate (R)</label><input class="inp" id="ec-review-selling" inputmode="decimal" placeholder="0.00"></div>'+
+      '<div><label class="ec-label">Measure as</label><select class="inp" id="ec-review-capture">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return '<option>'+v+'</option>';}).join('')+'</select></div>'+
+      '<button class="btn btn-brand" onclick="edgeCreatorReviewAddActivity()">Add activity</button></div></details>'+
+    '<details class="ec-review-extra"><summary>Scope questions &amp; internal checks <span>'+client.length+' client · '+actions.length+' internal</span></summary><div class="ec-extra-grid"><div><h3>Client scope questions</h3>'+(client.length?'<ol class="ec-list">'+client.map(function(x){return '<li><strong>'+(x.billNo==="Project"?"Project information":"Bill "+x.billNo+" — "+edgeCreatorEsc(x.bill))+':</strong> '+edgeCreatorEsc(x.text)+'</li>';}).join('')+'</ol><button class="btn" onclick="edgeCreatorPrintQuestions()">Print / save questions</button>':'<p class="ec-help">No unanswered client questions.</p>')+'</div><div><h3>Internal action list</h3>'+(actions.length?'<ul class="ec-list">'+actions.map(function(x){return '<li>'+edgeCreatorEsc(x)+'</li>';}).join('')+'</ul>':'<p class="ec-help">No internal actions generated.</p>')+'</div></div></details>'+
+    '<details class="ec-review-extra"><summary>More options <span>Excel and project-only build</span></summary><div class="ec-more-options"><div><strong>Prefer Excel?</strong><p class="ec-help">Export the generated EdgeBook, edit it offline and use the existing Import tab whenever you need the extra flexibility.</p><button class="btn" onclick="edgeCreatorExportDraft()">Export Excel draft</button></div><div><strong>Only need it in this project?</strong><p class="ec-help">Build the EdgeBook without adding it to your reusable company list.</p><button class="btn" onclick="edgeCreatorApply(false)" '+(unreviewed.length||!rows.length?'disabled':'')+'>Build for this project only</button></div></div></details>'+
+    '<div class="ec-finish"><div><label class="ec-label" for="ec-edgebook-name">EdgeBook name</label><input class="inp" id="ec-edgebook-name" value="'+edgeCreatorEsc(edgeCreatorSuggestedName())+'" oninput="edgeCreatorSetName(this.value)" placeholder="Office Fit-out EdgeBook"><p class="ec-help">This is the name your team will choose for future projects.</p></div><div class="ec-finish-action"><button class="btn" onclick="edgeCreatorBack()">← Back to scope</button><button class="btn btn-brand" onclick="edgeCreatorApply(true)" '+(unreviewed.length||!rows.length?'disabled':'')+'>Save EdgeBook &amp; finish →</button></div></div>';
+}
+function edgeCreatorSetName(value){
+  EDGEBOOK_CREATOR_STATE.edgebookName=value;
+  EDGEBOOK_CREATOR_STATE.edgebookNameTouched=true;
+  edgeCreatorPersist();
+}
+function edgeCreatorToggleReviewGroups(open){
+  document.querySelectorAll("#edgebook-creator .ec-price-bill").forEach(function(group){group.open=!!open;});
+}
+function edgeCreatorRefreshPricingSummary(){
+  const root=document.getElementById("edgebook-creator");
+  if(!root||EDGEBOOK_CREATOR_STATE.screen!=="review") return;
+  const stats=edgeCreatorPricingStats();
+  const priced=root.querySelector("#ec-priced-count"),cost=root.querySelector("#ec-cost-count"),selling=root.querySelector("#ec-selling-count"),customised=root.querySelector("#ec-customised-count"),bar=root.querySelector("#ec-price-progress-bar");
+  if(priced) priced.textContent=stats.priced+" / "+stats.total;
+  if(cost) cost.textContent=stats.cost;
+  if(selling) selling.textContent=stats.selling;
+  if(customised) customised.textContent=stats.customised;
+  if(bar) bar.style.width=(stats.total?Math.round(stats.priced/stats.total*100):0)+"%";
+}
+function edgeCreatorRemoveReviewRow(id){
+  let removed=false,removedFrom=null;
+  OFFICE_FITOUT_BILLS.forEach(function(_,i){
+    const no=i+1,before=EDGEBOOK_CREATOR_STATE.custom[no].length;
+    EDGEBOOK_CREATOR_STATE.custom[no]=EDGEBOOK_CREATOR_STATE.custom[no].filter(function(row){return row.id!==id;});
+    if(EDGEBOOK_CREATOR_STATE.custom[no].length!==before){removed=true;removedFrom=no;}
+  });
+  if(!removed){
+    OFFICE_FITOUT_BILLS.forEach(function(_,i){
+      const no=i+1,before=EDGEBOOK_CREATOR_STATE.selected[no].length;
+      EDGEBOOK_CREATOR_STATE.selected[no]=EDGEBOOK_CREATOR_STATE.selected[no].filter(function(rowId){return rowId!==id;});
+      if(EDGEBOOK_CREATOR_STATE.selected[no].length!==before){removed=true;removedFrom=no;}
+    });
+  }
+  if(removed){
+    delete EDGEBOOK_CREATOR_STATE.overrides[id];
+    if(removedFrom&&(EDGEBOOK_CREATOR_STATE.selected[removedFrom]||[]).length===0&&(EDGEBOOK_CREATOR_STATE.custom[removedFrom]||[]).length===0) EDGEBOOK_CREATOR_STATE.statuses[removedFrom]="not-required";
+    edgeCreatorPersist();edgeCreatorRenderScreen();
+  }
+}
+function edgeCreatorReviewAddActivity(){
+  const root=document.getElementById("edgebook-creator");
+  const no=Number(root.querySelector("#ec-review-bill")&&root.querySelector("#ec-review-bill").value);
+  const category=String(root.querySelector("#ec-review-category")&&root.querySelector("#ec-review-category").value||"").trim();
+  const description=String(root.querySelector("#ec-review-description")&&root.querySelector("#ec-review-description").value||"").trim();
+  if(!no||!category||!description){edgeCreatorError("Choose a bill and enter both a category and description for the new activity.");return;}
+  const row={
+    id:"custom-"+no+"-"+Date.now(),billNo:no,bill:OFFICE_FITOUT_BILLS[no-1],category:category,description:description,
+    unit:root.querySelector("#ec-review-unit").value,
+    cost:root.querySelector("#ec-review-cost").value,
+    selling:root.querySelector("#ec-review-selling").value,
+    capture:root.querySelector("#ec-review-capture").value
+  };
+  EDGEBOOK_CREATOR_STATE.statuses[no]="included";
+  EDGEBOOK_CREATOR_STATE.custom[no].push(row);
+  edgeCreatorPersist();edgeCreatorRenderScreen();
 }
 function edgeCreatorSetRole(value){EDGEBOOK_CREATOR_STATE.role=value;edgeCreatorPersist();}
 function edgeCreatorToggleInfo(value,checked){
@@ -278,6 +384,7 @@ function edgeCreatorOverride(id,field,value){
   if(!EDGEBOOK_CREATOR_STATE.overrides[id]) EDGEBOOK_CREATOR_STATE.overrides[id]={};
   EDGEBOOK_CREATOR_STATE.overrides[id][field]=value;
   edgeCreatorPersist();
+  edgeCreatorRefreshPricingSummary();
 }
 function edgeCreatorError(message){
   const el=document.querySelector("#edgebook-creator #ec-error");
@@ -292,7 +399,7 @@ function edgeCreatorExportDraft(){
   const rows=edgeCreatorOutputRows();
   if(!rows.length){edgeCreatorError("Select at least one included activity before exporting.");return;}
   const activities=[["Bill No","Bill","Category","Description","Unit","Selling Rate","Cost Rate","Capture Method"]];
-  rows.forEach(function(row){activities.push([row.billNo,row.bill,row.category,row.description,edgeCreatorUnit(row.unit),row.selling===""||row.selling==null?null:Number(row.selling),row.cost===""||row.cost==null?null:Number(row.cost),row.capture]);});
+  rows.forEach(function(row){activities.push([row.billNo,row.bill,row.category,row.description,edgeCreatorUnit(row.unit),String(row.selling==null?"":row.selling).trim()===""?null:edgeCreatorRateNumber(row.selling),String(row.cost==null?"":row.cost).trim()===""?null:edgeCreatorRateNumber(row.cost),row.capture]);});
   const questions=[["Reference","Bill","Question"]].concat(edgeCreatorClientQuestions().map(function(x){return [x.billNo,x.bill,x.text];}));
   const actions=[["Internal Action"]].concat(edgeCreatorInternalActions().map(function(x){return [x];}));
   const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(activities);
@@ -317,8 +424,11 @@ async function edgeCreatorApply(saveReusable){
   edgeCreatorSaveVisibleFields();
   const unreviewed=OFFICE_FITOUT_BILLS.filter(function(_,i){return !EDGEBOOK_CREATOR_STATE.statuses[i+1];});
   const rows=edgeCreatorOutputRows();
+  const saveName=String(edgeCreatorSuggestedName()||"").trim();
   if(unreviewed.length){edgeCreatorError("Review all 29 bills before building the EdgeBook.");return;}
   if(!rows.length){edgeCreatorError("The generated EdgeBook has no activities.");return;}
+  if(rows.some(function(row){return !String(row.description||"").trim();})){edgeCreatorError("Every selected activity needs a description before the EdgeBook can be built.");return;}
+  if(saveReusable&&!saveName){edgeCreatorError("Give the reusable EdgeBook a name before saving it.");return;}
   if(CAPTURES.length||MEASUREMENTS.length){edgeCreatorError("This project already contains measured or scoped work. The EdgeBook cannot be replaced because those quantities depend on the current activities.");return;}
   if((BILLS.length||ACTIVITIES.length)&&!confirm("Replace the current project EdgeBook with "+rows.length+" generated activities?")) return;
   BILLS.length=0;
@@ -340,16 +450,17 @@ async function edgeCreatorApply(saveReusable){
       while(CAT_LABELS[key]) key="office_"+no+"__"+clean+"_"+suffix++;
       catMap[catIdentity]=key;CAT_LABELS[key]=catName;CAT_BILL[key]=billMap[no];CAT_ORDER.push(key);
     }
-    const selling=Number(row.selling),cost=Number(row.cost);
-    ACTIVITIES.push({id:actNextId++,bill:billMap[no],cat:catMap[catIdentity],description:String(row.description||"").trim(),unit:edgeCreatorUnit(row.unit),rate:Number.isFinite(selling)&&selling>=0?selling:0,costRate:Number.isFinite(cost)&&cost>=0?cost:0,captureMethod:normaliseCaptureMethod(row.capture),addedBy:"EdgeBook Creator"});
+    const selling=edgeCreatorRateNumber(row.selling),cost=edgeCreatorRateNumber(row.cost);
+    ACTIVITIES.push({id:actNextId++,bill:billMap[no],cat:catMap[catIdentity],description:String(row.description||"").trim(),unit:edgeCreatorUnit(row.unit),rate:selling,costRate:cost,captureMethod:normaliseCaptureMethod(row.capture),addedBy:"EdgeBook Creator"});
   });
   BILLS.sort(function(a,b){return a.sortNo-b.sortNo;});
   CURRENT_EDGEBOOK_ID=null;CURRENT_EDGEBOOK_NAME="";
   EDGEBOOK_CREATOR_STATE.generatedAt=new Date().toISOString();
   markEdgeBookDirty();saveToStorage();updateEdgeBookStatus();
-  if(saveReusable){
-    await promptSaveEdgeBook();
-  }
+  let saved=false;
+  if(saveReusable) saved=await saveEdgeBookToLibraryNamed(saveName);
   switchTab("activities");
-  alert("EdgeBook built: "+BILLS.length+" bills and "+ACTIVITIES.length+" activities. Add or amend your contractor rates under Manage Activities.");
+  if(saveReusable&&saved) alert("EdgeBook saved: "+saveName+" · "+BILLS.length+" bills · "+ACTIVITIES.length+" activities. It is ready for this project and future use.");
+  else if(saveReusable) alert("The EdgeBook was built for this project, but it was not added to the reusable company list.");
+  else alert("EdgeBook built for this project: "+BILLS.length+" bills and "+ACTIVITIES.length+" activities.");
 }

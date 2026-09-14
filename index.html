@@ -447,11 +447,12 @@ select.inp{cursor:pointer;}
     <div class="auth-field">
       <label>EdgeBook</label>
       <select class="inp" id="np-edgebook" onchange="toggleNpLibrary(this.value)">
-        <option value="blank">Blank EdgeBook</option>
-        <option value="load">Load from library</option>
-        <option value="import">Import Excel</option>
         <option value="build">Guided Office Fit-out Creator</option>
+        <option value="load">Use a saved EdgeBook</option>
+        <option value="import">Import from Excel</option>
+        <option value="blank">Start with a blank EdgeBook</option>
       </select>
+      <div id="np-edgebook-help" style="font-size:11px;color:var(--text4);line-height:1.5;margin-top:5px;">Answer the guided scope questions, customise the descriptions and add prices directly in Edge Measure.</div>
     </div>
     <div id="np-library-row" class="auth-field" style="display:none;">
       <label>Select EdgeBook</label>
@@ -2221,6 +2222,13 @@ async function deleteSelectedProject(){
 function toggleNpLibrary(val){
   const row = document.getElementById('np-library-row');
   if(row) row.style.display = val==='load' ? 'block' : 'none';
+  const help=document.getElementById('np-edgebook-help');
+  if(help) help.textContent={
+    build:'Answer the guided scope questions, customise the descriptions and add prices directly in Edge Measure.',
+    load:'Choose one of your company EdgeBooks and use it immediately in this project.',
+    import:'Upload an EdgeBook you have edited or priced in Excel.',
+    blank:'Build the bills and activities manually from an empty EdgeBook.'
+  }[val]||'';
 }
 
 let _creatingProject=false;
@@ -6181,8 +6189,9 @@ function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 async function showNewProjModal(){
   document.getElementById('np-name').value='';
   document.getElementById('np-client').value='';
-  document.getElementById('np-edgebook').value='blank';
+  document.getElementById('np-edgebook').value='build';
   document.getElementById('np-library-row').style.display='none';
+  toggleNpLibrary('build');
   const errEl=document.getElementById('np-error');if(errEl)errEl.textContent='';
   // Populate library dropdown
   const libSel=document.getElementById('np-edgebook-select');
