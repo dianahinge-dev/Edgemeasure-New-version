@@ -5,6 +5,10 @@ const OFFICE_FITOUT_LIBRARY=[{"id":"m-1","billNo":1,"bill":"Survey, Planning and
 // Office fit-out library refinements from live project testing.
 // Framing around openings is measured as length × entered height × identical count,
 // using the same reusable Wall Height capture as framed windows and blinds.
+["m-65","m-66","m-67","m-68","m-69","m-70"].forEach(function(id){
+  const row=OFFICE_FITOUT_LIBRARY.find(function(item){return item.id===id;});
+  if(row){row.unit="lm";row.capture="Wall Linear";}
+});
 ["m-74","m-75","m-76"].forEach(function(id){
   const row=OFFICE_FITOUT_LIBRARY.find(function(item){return item.id===id;});
   if(row){row.unit="m2";row.capture="Wall Height";}

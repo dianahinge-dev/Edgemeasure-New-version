@@ -38,6 +38,10 @@ After building, use **Manage Activities** to customise descriptions and rates, t
 6. Remove the reused activity from the original measurement row and confirm the original BOQ quantity remains.
 7. Measure a framed window or Venetian blind, enter its height and an identical count, and confirm the BOQ receives length × height × count.
 8. Confirm the Ceilings library includes both new-grid and existing-grid options for 1200 × 600 mm acoustic tiles.
+9. In a newly generated EdgeBook, confirm complete drywall partition systems are measured in linear metres.
+10. Save a drywall wall-line measurement, reuse it for an m² acoustic-infill activity, and confirm the result is wall length × default wall height.
+11. Start drawing a new measurement across an existing one and confirm its hover label disappears while points are being placed.
+12. Print or preview the BOQ and confirm automatic text does not repeat the activity description after the quantity.
 
 ## Safety rule
 
