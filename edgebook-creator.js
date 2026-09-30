@@ -280,6 +280,7 @@ async function edgeCreatorStart(){
     if(error||!data){edgeCreatorError('Could not save the draft: '+(error?.message||'Unknown error'));return;}
     EDGEBOOK_CREATOR_DRAFT_ID=data.id;
     await populateCreatorDraftDropdown();
+    await populateEdgeBookManagement();
   }
   EDGEBOOK_CREATOR_STATE.screen='bill';EDGEBOOK_CREATOR_STATE.billIndex=0;edgeCreatorPersist();edgeCreatorRenderScreen();
 }
@@ -409,9 +410,12 @@ async function edgeCreatorApply(){
     name:EDGEBOOK_CREATOR_STATE.name,data:book,updated_at:new Date().toISOString()
   }).eq('id',draftId).eq('company_id',AUTH_USER.company_id);
   if(error){edgeCreatorError('Could not save the EdgeBook: '+error.message);return;}
+  const attached=CURRENT_PROJECT_ID?await useSavedEdgeBookInProject(draftId,{showMessage:false}):false;
   EDGEBOOK_CREATOR_DRAFT_ID=null;
   EDGEBOOK_CREATOR_STATE=edgeCreatorBlankState();
-  document.getElementById('edgebook-creator').innerHTML=`<div class="ec-note ec-success"><strong>EdgeBook saved.</strong><div class="ec-help">${bills.length} bills and ${activities.length} activities are ready. Choose it in Project Setup; the current project has not changed.</div><div style="margin-top:14px;"><button class="btn btn-brand" onclick="closeEdgeBookCreator();showPage('setup')">Go to Projects →</button> <button class="btn" onclick="edgeCreatorNewDraft()">Create another</button></div></div>`;
+  const outcome=attached?'It is now used in the open project. The project has its own copy.':CURRENT_PROJECT_ID?'The book is saved, but the open project was not changed. You can select it later in Project Setup.':'Choose it in Project Setup when you open a project.';
+  document.getElementById('edgebook-creator').innerHTML=`<div class="ec-note ec-success"><strong>EdgeBook saved.</strong><div class="ec-help">${bills.length} bills and ${activities.length} activities are ready. ${outcome}</div><div style="margin-top:14px;"><button class="btn btn-brand" onclick="closeEdgeBookCreator();showPage('setup')">Go to Projects →</button> <button class="btn" onclick="edgeCreatorNewDraft()">Create another</button></div></div>`;
   await populateCreatorDraftDropdown();
+  await populateEdgeBookManagement();
   await populateEdgeBookDropdown();
 }

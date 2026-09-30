@@ -270,6 +270,7 @@ select.inp{cursor:pointer;}
 #new-proj-modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9995;display:flex;align-items:center;justify-content:center;}
 #new-proj-modal.hidden{display:none;}
 .modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:28px;width:480px;max-width:95vw;}
+#new-proj-modal .modal-box{width:620px;max-height:92vh;overflow-y:auto;}
 .modal-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.04em;margin-bottom:6px;}
 .modal-title span{color:var(--brand);}
 .modal-sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
@@ -431,7 +432,7 @@ select.inp{cursor:pointer;}
 <div id="new-proj-modal" class="hidden">
   <div class="modal-box">
     <div class="modal-title">New <span>Project.</span></div>
-    <div class="modal-sub">Name the project. You can measure a plan now and choose an EdgeBook later.</div>
+    <div class="modal-sub">Set up the project details. Choose or create its EdgeBook once the project is open.</div>
     <div class="auth-field">
       <label>Project Name <span class="req">*</span></label>
       <input class="inp" id="np-name" placeholder="e.g. Head Office Fit-out" onkeydown="if(event.key==='Enter')createNewProject()"/>
@@ -440,23 +441,30 @@ select.inp{cursor:pointer;}
       <label>Client</label>
       <input class="inp" id="np-client" placeholder="e.g. Client name" onkeydown="if(event.key==='Enter')createNewProject()"/>
     </div>
-    <div class="auth-field">
-      <label>Start with</label>
-      <select class="inp" id="np-edgebook" onchange="toggleNpLibrary(this.value)">
-        <option value="none">Measure first — choose an EdgeBook later</option>
-        <option value="load">Use a saved EdgeBook</option>
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="auth-field"><label>Date</label><input class="inp" id="np-date" type="date"/></div>
+      <div class="auth-field"><label>Prepared By</label><input class="inp" id="np-scoped-by" placeholder="Your name"/></div>
     </div>
-    <div id="np-library-row" class="auth-field" style="display:none;">
-      <label>Select EdgeBook</label>
-      <select class="inp" id="np-edgebook-select">
-        <option value="">— select an EdgeBook —</option>
-      </select>
-    </div>
+    <div class="auth-field"><label>Site / Delivery Address</label><input class="inp" id="np-site-address" placeholder="Project or site address"/></div>
     <div class="auth-err" id="np-error"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
       <button class="btn" onclick="closeNewProjModal()">Cancel</button>
       <button id="btn-create-project" class="btn btn-brand" onclick="createNewProject()" style="background:var(--lime);color:var(--lime-dark);border-color:var(--lime);">Create Project →</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM PERMANENT DELETION -->
+<div id="delete-confirm-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+  <div class="delete-confirm-panel">
+    <div id="delete-confirm-title" style="font-family:'Bebas Neue',sans-serif;font-size:25px;">Delete permanently?</div>
+    <p id="delete-confirm-description"></p>
+    <label for="delete-confirm-pin">Deletion PIN</label>
+    <input id="delete-confirm-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="Enter PIN" onkeydown="if(event.key==='Enter')confirmPermanentDeletion()"/>
+    <div id="delete-confirm-error" role="alert"></div>
+    <div class="delete-confirm-actions">
+      <button onclick="closeDeleteConfirmation()">Cancel</button>
+      <button id="delete-confirm-button" onclick="confirmPermanentDeletion()">Delete permanently</button>
     </div>
   </div>
 </div>
@@ -643,7 +651,7 @@ select.inp{cursor:pointer;}
     <!-- NEW PROJECT CARD -->
     <div onclick="showNewProjModal()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;" onmouseover="this.style.borderColor='var(--lime)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.04em;line-height:1;color:var(--lime);margin-bottom:6px;">New Project.</div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.5;">Start fresh — name your project, pick a client and load your EdgeBook.</div>
+      <div style="font-size:12px;color:var(--text3);line-height:1.5;">Fill in the project details, then choose how to build its EdgeBook.</div>
       <div style="position:absolute;bottom:14px;right:16px;font-size:18px;color:var(--lime);opacity:0.5;">＋</div>
     </div>
 
@@ -656,14 +664,10 @@ select.inp{cursor:pointer;}
         </select>
         <button id="btn-open-project" onclick="openSelectedProject()" style="padding:7px 16px;background:var(--brand);color:#fff;border:none;border-radius:4px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;transition:background 0.2s;display:none;white-space:nowrap;">Open →</button>
         <button id="btn-delete-project" onclick="deleteSelectedProject()" style="padding:7px 12px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;display:none;">Archive</button>
+        <button id="btn-permanent-delete-project" onclick="requestProjectDeletion()" style="padding:7px 12px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;display:none;">Delete</button>
         <button id="btn-toggle-archived" onclick="toggleArchivedProjects()" style="padding:7px 10px;background:transparent;border:1px solid var(--border2);color:var(--text4);border-radius:4px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;display:none;white-space:nowrap;">Show archived</button>
       </div>
     </div>
-  </div>
-
-  <div style="margin-bottom:24px;padding:16px 20px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-    <div><strong>Create a reusable EdgeBook</strong><div style="font-size:12px;color:var(--text3);">The guided questionnaire is separate from your project. Save the book, then choose it for any project.</div></div>
-    <button class="btn" onclick="openEdgeBookCreator()">Open EdgeBook creator →</button>
   </div>
 
   <!-- ACTIVE PROJECT SECTION (shown when project is open) -->
@@ -698,15 +702,23 @@ select.inp{cursor:pointer;}
     <div id="project-history" style="font-size:10px;color:var(--text4);margin-top:10px;"></div>
   </div>
 
-  <!-- PROJECT EDGEBOOK -->
-  <div style="margin:24px 0;padding:18px 20px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);">
+  <!-- PROJECT EDGEBOOK CHOICE -->
+  <div style="margin:24px 0;">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;">Project <span style="color:var(--brand);">EdgeBook.</span></div>
     <div id="project-edgebook-summary" style="font-size:12px;color:var(--text3);margin:5px 0 14px;"></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <select class="inp" id="edgebook-library-select" style="flex:1;min-width:230px;"><option value="">— choose a saved EdgeBook —</option></select>
-      <button class="btn btn-brand" onclick="loadEdgeBookFromLibrary()">Use in this project →</button>
+    <div class="project-edgebook-choices">
+      <div class="project-edgebook-create">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:21px;">Create an EdgeBook</div>
+        <p>The guided questionnaire opens separately. When you save it, the project gets a copy and the reusable book stays in your library.</p>
+        <button onclick="openEdgeBookCreator()">Open creator →</button>
+      </div>
+      <div class="project-edgebook-existing">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:21px;">Use an existing EdgeBook</div>
+        <p>Choose a saved book. Your project receives its own copy.</p>
+        <select class="inp" id="edgebook-library-select"><option value="">— choose a saved EdgeBook —</option></select>
+        <button class="btn btn-brand" onclick="loadEdgeBookFromLibrary()">Use in this project →</button>
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--text4);margin-top:8px;">This loads a project copy. Editing it does not change the saved EdgeBook unless you explicitly save over that book.</div>
   </div>
 
   <!-- LOCATIONS -->
@@ -811,7 +823,7 @@ select.inp{cursor:pointer;}
     <div class="edgebooks-modal-head">
       <div>
         <div class="page-title" id="edgebooks-modal-title">Create an <span>EdgeBook.</span></div>
-        <div class="page-sub">The guided questionnaire saves a reusable book. Your current project stays as it is.</div>
+        <div class="page-sub">The guided questionnaire saves a reusable book and adds a copy to the open project when its activity links allow it.</div>
       </div>
       <button class="btn" onclick="closeEdgeBookCreator()" aria-label="Close EdgeBook creator">✕ Close</button>
     </div>
@@ -821,6 +833,7 @@ select.inp{cursor:pointer;}
         <button class="btn" onclick="edgeCreatorLoadDraft()">Resume draft</button>
         <button class="btn" onclick="edgeCreatorNewDraft()">New EdgeBook</button>
       </div>
+      <details class="edgebooks-library-manager"><summary>Manage saved EdgeBooks and drafts</summary><div id="edgebook-manage-list"></div></details>
       <div id="edgebook-creator"></div>
     </div>
   </div>
@@ -1238,6 +1251,7 @@ function openEdgeBookCreator(){
   document.body.style.overflow='hidden';
   renderEdgebookCreator();
   populateCreatorDraftDropdown();
+  populateEdgeBookManagement();
   modal.querySelector('[aria-label="Close EdgeBook creator"]').focus();
 }
 function closeEdgeBookCreator(){
@@ -2193,12 +2207,14 @@ async function populateOpenProjectDropdown(){
   });
   // Store projects for meta lookup
   sel._projects = projects;
+  handleProjectSelect(sel);
 }
 
 function handleProjectSelect(sel){
   const val = sel.value;
   const openBtn = document.getElementById('btn-open-project');
   const delBtn = document.getElementById('btn-delete-project');
+  const permanentBtn=document.getElementById('btn-permanent-delete-project');
   const selected=(sel._projects||[]).find(p=>String(p.id)===String(val));
   const archived=selected?.status==='archived';
   if(val && !archived && openBtn) openBtn.style.display='inline-block';
@@ -2210,6 +2226,7 @@ function handleProjectSelect(sel){
     delBtn.style.color=archived?'var(--green)':'var(--red)';
   }
   else if(delBtn) delBtn.style.display='none';
+  if(permanentBtn) permanentBtn.style.display=val?'inline-block':'none';
 }
 
 async function toggleArchivedProjects(){
@@ -2229,8 +2246,10 @@ async function openSelectedProject(){
   sel.value='';
   const openBtn=document.getElementById('btn-open-project');
   const delBtn=document.getElementById('btn-delete-project');
+  const permanentBtn=document.getElementById('btn-permanent-delete-project');
   if(openBtn) openBtn.style.display='none';
   if(delBtn) delBtn.style.display='none';
+  if(permanentBtn) permanentBtn.style.display='none';
 }
 
 async function deleteSelectedProject(){
@@ -2253,9 +2272,100 @@ async function deleteSelectedProject(){
   await populateOpenProjectDropdown();
 }
 
-function toggleNpLibrary(val){
-  const row = document.getElementById('np-library-row');
-  if(row) row.style.display = val==='load' ? 'block' : 'none';
+// The PIN is a guard against accidental clicks, not an account permission.
+const DELETE_CONFIRM_PIN='2468';
+let pendingPermanentDelete=null;
+let permanentDeleteRunning=false;
+function showDeleteConfirmation(kind,id,name,description){
+  pendingPermanentDelete={kind,id,name};
+  document.getElementById('delete-confirm-description').textContent=description;
+  document.getElementById('delete-confirm-pin').value='';
+  document.getElementById('delete-confirm-error').textContent='';
+  document.getElementById('delete-confirm-modal').classList.remove('hidden');
+  document.getElementById('delete-confirm-pin').focus();
+}
+function closeDeleteConfirmation(){
+  if(permanentDeleteRunning) return;
+  document.getElementById('delete-confirm-modal').classList.add('hidden');
+  pendingPermanentDelete=null;
+}
+async function requestProjectDeletion(){
+  const id=document.getElementById('open-proj-select')?.value;
+  if(!id) return;
+  try{
+    const project=await fetchProject(id);
+    const plans=project.project_data?.plansMeta?.length||0;
+    showDeleteConfirmation('project',id,project.name,
+      `Delete "${project.name}" permanently? Its details, measurements, BOQ and ${plans} stored plan${plans===1?'':'s'} will be removed. Saved EdgeBooks will remain. This cannot be undone.`);
+  }catch(e){alert(e.message);}
+}
+function requestEdgeBookDeletion(id,name,isDraft){
+  showDeleteConfirmation('edgebook',id,name,
+    `Delete ${isDraft?'draft':'saved EdgeBook'} "${name}" permanently? Projects already using it keep their own copies. This cannot be undone.`);
+}
+async function confirmPermanentDeletion(){
+  if(!pendingPermanentDelete||permanentDeleteRunning) return;
+  const errorEl=document.getElementById('delete-confirm-error');
+  if(document.getElementById('delete-confirm-pin').value!==DELETE_CONFIRM_PIN){
+    errorEl.textContent='Incorrect PIN. Nothing was deleted.';return;
+  }
+  permanentDeleteRunning=true;
+  const btn=document.getElementById('delete-confirm-button');
+  btn.disabled=true;btn.textContent='Deleting…';errorEl.textContent='';
+  try{
+    const target=pendingPermanentDelete;
+    const warning=target.kind==='project'
+      ?await permanentlyDeleteProject(target.id)
+      :await permanentlyDeleteEdgeBook(target.id);
+    permanentDeleteRunning=false;
+    closeDeleteConfirmation();
+    if(warning) alert(warning);
+  }catch(e){errorEl.textContent=e.message||'Deletion failed. Nothing else was removed.';}
+  finally{permanentDeleteRunning=false;btn.disabled=false;btn.textContent='Delete permanently';}
+}
+async function permanentlyDeleteProject(id){
+  const project=await fetchProject(id); // refresh and keep the deletion company-scoped
+  if(CURRENT_PROJECT_ID===id){clearTimeout(_autoSaveTimer);await _saveQueue.catch(()=>{});}
+  const prefix=`${AUTH_USER.company_id}/${id}/`;
+  const paths=new Set();
+  (project.project_data?.plansMeta||[]).forEach(plan=>{
+    if(plan.sourcePath?.startsWith(prefix)) paths.add(plan.sourcePath);
+    (plan.pages||[]).forEach(page=>{if(page.storagePath?.startsWith(prefix))paths.add(page.storagePath);});
+  });
+  if(CURRENT_PROJECT_ID===id) PLANS.forEach(plan=>{
+    if(plan.sourcePath?.startsWith(prefix)) paths.add(plan.sourcePath);
+    (plan.pages||[]).forEach(page=>{if(page.storagePath?.startsWith(prefix))paths.add(page.storagePath);});
+  });
+  const {data,error}=await _sb.from('projects').delete().eq('id',id).eq('company_id',AUTH_USER.company_id).select('id').maybeSingle();
+  if(error||!data) throw new Error('The project could not be deleted: '+(error?.message||'It was not found.'));
+  const recoveryKey=`edge-recovery:${AUTH_USER.company_id}:${AUTH_USER.id}:${id}`;
+  try{localStorage.removeItem(recoveryKey);}catch(e){}
+  if(CURRENT_PROJECT_ID===id){resetAppState();updateNavProjectState();showPage('setup');showActiveProjectSection();}
+  const all=[...paths],failures=[];
+  for(let i=0;i<all.length;i+=100){
+    try{
+      const {error:storageError}=await _sb.storage.from('floor-plans').remove(all.slice(i,i+100));
+      if(storageError) failures.push(storageError.message);
+    }catch(e){failures.push(e.message);}
+  }
+  try{await populateOpenProjectDropdown();}catch(e){failures.push('The project list could not refresh. Reload the page.');}
+  return failures.length?'The project was deleted, but some stored plan files could not be removed: '+failures.join('; '):'';
+}
+async function permanentlyDeleteEdgeBook(id){
+  if(EDGEBOOK_CREATOR_DRAFT_ID===id){
+    clearTimeout(_edgeCreatorTimer);_edgeCreatorTimer=null;
+    await _edgeCreatorSaveQueue.catch(()=>{});
+  }
+  const {data,error}=await _sb.from('edgebooks').delete().eq('id',id).eq('company_id',AUTH_USER.company_id).select('id').maybeSingle();
+  if(error||!data) throw new Error('The EdgeBook could not be deleted: '+(error?.message||'It was not found.'));
+  if(EDGEBOOK_CREATOR_DRAFT_ID===id){EDGEBOOK_CREATOR_DRAFT_ID=null;EDGEBOOK_CREATOR_STATE=edgeCreatorBlankState();renderEdgebookCreator();}
+  if(CURRENT_EDGEBOOK_ID===id){
+    CURRENT_EDGEBOOK_ID=null;
+    CURRENT_EDGEBOOK_NAME=(CURRENT_EDGEBOOK_NAME||'EdgeBook')+' (deleted from library)';
+    updateEdgeBookStatus();updateProjectEdgeBookSummary();saveToStorage();
+  }
+  await Promise.all([populateCreatorDraftDropdown(),populateEdgeBookManagement(),populateEdgeBookDropdown()]);
+  return '';
 }
 
 let _creatingProject=false;
@@ -2264,19 +2374,15 @@ async function createNewProject(){
   const createBtn = document.getElementById('btn-create-project');
   const name = document.getElementById('np-name')?.value.trim();
   const client = document.getElementById('np-client')?.value.trim();
-  const ebMode = document.getElementById('np-edgebook')?.value;
+  const date = document.getElementById('np-date')?.value||'';
+  const scopedBy = document.getElementById('np-scoped-by')?.value.trim()||'';
+  const siteAddress = document.getElementById('np-site-address')?.value.trim()||'';
   const errEl = document.getElementById('np-error');
   if(errEl) errEl.textContent='';
   if(!name){if(errEl) errEl.textContent='Please give the project a name.';return;}
   _creatingProject=true;
   if(createBtn){createBtn.disabled=true;createBtn.style.opacity='0.6';createBtn.style.cursor='default';createBtn.textContent='Creating…';}
   try{
-    let selectedBook=null;
-    if(ebMode==='load'){
-      const libId=document.getElementById('np-edgebook-select')?.value;
-      if(!libId){if(errEl) errEl.textContent='Choose a saved EdgeBook first.';return;}
-      selectedBook=await readSavedEdgeBook(libId);
-    }
     // Save current project first if open
     if(CURRENT_PROJECT_ID){await offerEdgeBookSaveIfNeeded();await persistCurrentProject();}
     // Check for duplicate name
@@ -2297,15 +2403,15 @@ async function createNewProject(){
     resetAppState();
     PROJECT.name = name;
     PROJECT.client = client||'';
-    PROJECT.scopedBy = AUTH_USER?.name||'';
-    PROJECT.date = new Date().toISOString().split('T')[0];
+    PROJECT.scopedBy = scopedBy;
+    PROJECT.date = date;
+    PROJECT.siteAddress = siteAddress;
     PROJECT.createdBy = AUTH_USER?.name||'';
     PROJECT.lastEditedBy = AUTH_USER?.name||'';
     CURRENT_PROJECT_ID = data.id;
     CURRENT_PROJECT_UPDATED_AT = data.updated_at||null;
-    if(selectedBook) applySavedEdgeBook(selectedBook);
     closeNewProjModal();
-    showPage(selectedBook?'setup':'measure');showActiveProjectSection();
+    showPage('setup');showActiveProjectSection();
     await populateOpenProjectDropdown();
     scheduleAutoSave();
     updateNavProjectState();
@@ -5989,16 +6095,10 @@ function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 async function showNewProjModal(){
   document.getElementById('np-name').value='';
   document.getElementById('np-client').value='';
-  document.getElementById('np-edgebook').value='none';
-  document.getElementById('np-library-row').style.display='none';
+  document.getElementById('np-date').value=new Date().toLocaleDateString('sv-SE');
+  document.getElementById('np-scoped-by').value=AUTH_USER?.name||'';
+  document.getElementById('np-site-address').value='';
   const errEl=document.getElementById('np-error');if(errEl)errEl.textContent='';
-  // Populate library dropdown
-  const libSel=document.getElementById('np-edgebook-select');
-  if(libSel){
-    const books=await fetchEdgeBooks();
-    libSel.innerHTML='<option value="">— select an EdgeBook —</option>';
-    books.forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.name+(b.is_template?' (template)':'');libSel.appendChild(o);});
-  }
   document.getElementById('new-proj-modal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('np-name').focus(),100);
 }
@@ -6251,6 +6351,23 @@ async function fetchEdgeBooks(){
   if(error){console.warn('EdgeBook fetch error:', error.message); return [];}
   return (data||[]).filter(b=>!b.data?.creatorDraft);
 }
+async function populateEdgeBookManagement(){
+  const container=document.getElementById('edgebook-manage-list');
+  if(!container||!AUTH_USER) return;
+  const {data,error}=await _sb.from('edgebooks')
+    .select('id,name,is_template,data').eq('company_id',AUTH_USER.company_id).order('name');
+  if(error){container.textContent='Could not load saved EdgeBooks: '+error.message;return;}
+  container.replaceChildren();
+  if(!data?.length){container.textContent='No saved EdgeBooks or drafts yet.';return;}
+  data.forEach(book=>{
+    const row=document.createElement('div');row.className='edgebook-library-row';
+    const label=document.createElement('span');
+    label.textContent=`${book.name} · ${book.data?.creatorDraft?'Draft':'Saved EdgeBook'}`;
+    const button=document.createElement('button');button.type='button';button.textContent='Delete';
+    button.onclick=()=>requestEdgeBookDeletion(book.id,book.name,!!book.data?.creatorDraft);
+    row.append(label,button);container.appendChild(row);
+  });
+}
 
 async function readSavedEdgeBook(id){
   const {data,error}=await _sb.from('edgebooks').select('id,name,company_id,is_template,data').eq('id',id).single();
@@ -6309,22 +6426,28 @@ async function loadEdgeBookFromLibrary(){
   const sel = document.getElementById('edgebook-library-select');
   const id = sel?.value;
   if(!id){alert('Please select an EdgeBook from the list.');return;}
+  return useSavedEdgeBookInProject(id);
+}
+async function useSavedEdgeBookInProject(id,{showMessage=true}={}){
+  if(!CURRENT_PROJECT_ID){if(showMessage)alert('Open a project first.');return false;}
   if(CAPTURES.length||MEASUREMENTS.some(m=>m.sent)){
-    alert('This project has quantities already sent to Scope or entered manually. Changing its EdgeBook could break those activity links.');
-    return;
+    if(showMessage)alert('This project has quantities already sent to Scope or entered manually. Changing its EdgeBook could break those activity links.');
+    return false;
   }
   try{
     const saved=await readSavedEdgeBook(id); // validate before replacing any project data
+    if(CURRENT_EDGEBOOK_ID===saved.id) return true;
     const tagged=MEASUREMENTS.filter(m=>m.actId).length;
     const warning=tagged
       ? `Replace this project's EdgeBook with "${saved.name}"? ${tagged} unsent measurement${tagged===1?'':'s'} will lose their activity tags, but their geometry and quantities will stay on the plan. The saved library book will not change.`
       : `Replace this project's EdgeBook with "${saved.name}"? Your saved library book and untagged measurements will not change.`;
-    if((BILLS.length||ACTIVITIES.length||tagged)&&!confirm(warning)) return;
+    if((BILLS.length||ACTIVITIES.length||tagged)&&!confirm(warning)) return false;
     if(tagged) MEASUREMENTS.forEach(m=>{if(!m.sent){m.actId=null;m.captureMethod=null;m.annotationStyle=null;}});
     applySavedEdgeBook(saved);
     saveToStorage();switchTab('manage-bills');
-    alert(`✓ "${saved.name}" is now used in this project. Untagged plan measurements are still here for you to classify.`);
-  }catch(e){alert(e.message);}
+    if(showMessage)alert(`✓ "${saved.name}" is now used in this project. Untagged plan measurements are still here for you to classify.`);
+    return true;
+  }catch(e){if(showMessage)alert(e.message);return false;}
 }
 
 async function saveEdgeBookToLibrary(){
@@ -6531,6 +6654,7 @@ async function saveEdgeBookToLibraryNamed(name){
   markEdgeBookSaved(savedId,name);
   scheduleAutoSave();
   await populateEdgeBookDropdown();
+  await populateEdgeBookManagement();
   return true;
 }
 
