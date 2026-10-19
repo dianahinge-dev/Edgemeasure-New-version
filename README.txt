@@ -1,22 +1,17 @@
-Edge Measure — guided EdgeBook and quick measurement flow
-29 September 2026
+Edge Measure — 19 October 2026 update
 
-This bundle uses the supplied index(6).html as its app baseline and brings in the guided Office Fit-out EdgeBook questionnaire from the available September Edge Measure bundle.
+Deploy
+Unzip this bundle and upload the contents of the extracted app folder to the existing repository root, as usual. No SQL or database schema update is required. This bundle has not been deployed to the live app.
 
-Project route
-1. New Project → fill in project name, client, date, prepared by and site address.
-2. In the open project, create a new EdgeBook in the white modal or choose an existing saved EdgeBook.
-3. You may also upload a PDF and calibrate the page with one known dimension before choosing a book. Length, Area, Perimeter and Count can be tagged later.
-4. Add locations/areas and tag plan measurements before sending them to Scope and BOQ.
+Changes
+- Count activities have an optional marker of up to two letters or numbers, such as E, DK (desks), DA (data) or DR (doors). Leave it blank to use numbered markers.
+- Manage Activities: choose Count, enter the optional marker, and save. Markers can be changed on activities already in use without changing quantities.
+- EdgeBook Creator: custom activities and the review screen include the optional marker field.
+- Excel EdgeBook templates, drafts and exports include an optional Count marker column. Older EdgeBooks still import; Count E, Count D and Count P retain their symbols.
+- Hover labels show the category and measured value. If no category is available, the activity description is used.
+- Wall Height and Wall SQM strokes are 20% thinner, including their contrast outline. Other measurement methods keep their current thickness.
+- The collapsible capture-symbol legend shows only custom or E/D/P count symbols used by visible items on the current page, labelled by Bill with one entry per marker within each Bill. It excludes lines, areas and plain numbered counts, disappears when no symbols are used, and is included when printing or saving the annotated plan as a PDF.
+- BOQ descriptions omit automatic From plan and counted on plan notes, including in older saved projects. Actual notes and deduction details remain.
 
-Guided route
-1. Open the white EdgeBook creator modal from EdgeBooks or Project Setup, name a new book and answer the 29-bill questionnaire.
-2. The questionnaire saves a resumable draft in the company EdgeBook library.
-3. Save the completed reusable EdgeBook. If a project is open, it also gets its own copy unless linked Scope quantities prevent a whole-book change.
-4. Existing saved books can be selected from the open project's setup screen.
-
-Changing a project's EdgeBook preserves untagged measurements. Unsent measurements with activity tags keep their geometry but lose those tags after confirmation. A project with Scope quantities linked to activities cannot change its whole EdgeBook.
-
-Projects can be archived or permanently deleted with deletion PIN 2468. Saved company EdgeBooks and drafts can also be permanently deleted in the modal. The PIN is an accidental-deletion guard, not account security. The signed-in account must have Supabase permission to delete those records.
-
-No database schema migration is included. Upload the contents of this folder to the repository root when ready. Check against the live repository before replacing production code: the supplied index file did not contain the questionnaire, and a newer deployed copy could contain other changes.
+Validation
+Checked in an isolated Chromium browser with sample project data: legacy count conversion, editing markers on used activities, quantity calculations, category labels, page-specific legends, canvas stroke widths, real XLSX export/re-import, legacy XLSX import, guided builder custom activities and saved-book payload, and one-page A3 plan printing. Live authentication and Supabase writes were not exercised.

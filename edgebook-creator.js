@@ -17,7 +17,7 @@ OFFICE_FITOUT_LIBRARY.push(
   {"id":"m-406","billNo":9,"bill":"Ceilings","category":"Suspended ceilings","description":"Supply and install 1200x600mm acoustic ceiling tiles and new suspended grid","unit":"m2","selling":"","cost":"","capture":"SQM"},
   {"id":"m-407","billNo":9,"bill":"Ceilings","category":"Suspended ceilings","description":"Supply and install 1200x600mm acoustic ceiling tiles in existing grid","unit":"m2","selling":"","cost":"","capture":"SQM"}
 );
-const EDGE_CREATOR_CAPTURE_METHODS=["Count","Count E","Count D","Count P","Linear","Perimeter","SQM","Wall Height","Wall SQM","Wall Linear"];
+const EDGE_CREATOR_CAPTURE_METHODS=["Count","Linear","Perimeter","SQM","Wall Height","Wall SQM","Wall Linear"];
 let EDGEBOOK_CREATOR_STATE=edgeCreatorBlankState();
 let EDGEBOOK_CREATOR_DRAFT_ID=null;
 let _edgeCreatorTimer=null;
@@ -126,7 +126,12 @@ function edgeCreatorOutputRows(){
       result.push(Object.assign({},row,EDGEBOOK_CREATOR_STATE.overrides[row.id]||{}));
     });
   }
-  return result;
+  return result.map(function(row){
+    const profile=getCaptureProfile(row.capture,row.countMarker);
+    row.capture=profile.tool==='count'?'Count':profile.method;
+    row.countMarker=profile.tool==='count'?profile.symbol:'';
+    return row;
+  });
 }
 function edgeCreatorClientQuestions(){
   const items=[];
@@ -212,7 +217,7 @@ function edgeCreatorBillHtml(){
   const groups={};
   edgeCreatorRowsByBill(no).forEach(function(row){(groups[row.category]||(groups[row.category]=[])).push(row);});
   const customHtml=(state.custom[no]||[]).map(function(row){
-    return '<div class="ec-custom-row"><span>'+edgeCreatorEsc(row.description)+' <span class="ec-meta">('+edgeCreatorEsc(row.unit)+' · '+edgeCreatorEsc(row.capture)+')</span></span><button class="del-btn" data-custom-id="'+edgeCreatorEsc(row.id)+'" onclick="edgeCreatorRemoveCustom(this.dataset.customId)">Remove</button></div>';
+    return '<div class="ec-custom-row"><span>'+edgeCreatorEsc(row.description)+' <span class="ec-meta">('+edgeCreatorEsc(row.unit)+' · '+edgeCreatorEsc(row.capture+(row.countMarker?' · '+row.countMarker:''))+')</span></span><button class="del-btn" data-custom-id="'+edgeCreatorEsc(row.id)+'" onclick="edgeCreatorRemoveCustom(this.dataset.customId)">Remove</button></div>';
   }).join("");
   let details="";
   if(status==="included"){
@@ -220,13 +225,14 @@ function edgeCreatorBillHtml(){
       Object.keys(groups).map(function(cat){
         const rows=groups[cat],all=rows.every(function(row){return (state.selected[no]||[]).includes(row.id);});
         return '<div class="ec-category"><div class="ec-category-head"><h4>'+edgeCreatorEsc(cat)+'</h4><button class="ec-mini" onclick="edgeCreatorToggleCategory(&quot;'+encodeURIComponent(cat)+'&quot;,'+(!all)+')">'+(all?"Clear":"Select all")+'</button></div>'+
-          rows.map(function(row){return '<label class="ec-activity"><input type="checkbox" '+((state.selected[no]||[]).includes(row.id)?"checked":"")+' onchange="edgeCreatorToggleActivity(&quot;'+row.id+'&quot;,this.checked)"><span>'+edgeCreatorEsc(row.description)+'</span><span class="ec-meta">'+edgeCreatorEsc(edgeCreatorUnit(row.unit))+' · '+edgeCreatorEsc(row.capture)+'</span></label>';}).join("")+'</div>';
+          rows.map(function(row){return '<label class="ec-activity"><input type="checkbox" '+((state.selected[no]||[]).includes(row.id)?"checked":"")+' onchange="edgeCreatorToggleActivity(&quot;'+row.id+'&quot;,this.checked)"><span>'+edgeCreatorEsc(row.description)+'</span><span class="ec-meta">'+edgeCreatorEsc(edgeCreatorUnit(row.unit))+' · '+edgeCreatorEsc(row.capture+(row.countMarker?' · '+row.countMarker:''))+'</span></label>';}).join("")+'</div>';
       }).join("")+'</div>'+
       '<div class="ec-section"><h3 style="font-size:16px;">Custom activity</h3><p class="ec-help">Add something only when the standard library does not cover it.</p><div class="ec-custom-form">'+
       '<div><label class="ec-label">Category</label><input class="inp" id="ec-custom-category"></div>'+
       '<div><label class="ec-label">Description</label><input class="inp" id="ec-custom-description"></div>'+
       '<div><label class="ec-label">Unit</label><select class="inp" id="ec-custom-unit">'+["item","no","m²","lm","p","sum"].map(function(v){return "<option>"+v+"</option>";}).join("")+'</select></div>'+
-      '<div><label class="ec-label">Capture method</label><select class="inp" id="ec-custom-capture">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return "<option>"+v+"</option>";}).join("")+'</select></div>'+
+      '<div><label class="ec-label">Capture method</label><select class="inp" id="ec-custom-capture" onchange="toggleCountMarkerField(&quot;ec-custom-capture&quot;,&quot;ec-custom-marker-field&quot;)">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return "<option>"+v+"</option>";}).join("")+'</select></div>'+
+      '<div id="ec-custom-marker-field"><label class="ec-label">Count marker (optional)</label><input class="inp" id="ec-custom-marker" maxlength="2" placeholder="e.g. DK — blank for numbers" oninput="this.value=normaliseCountMarker(this.value)"></div>'+
       '<button class="btn" onclick="edgeCreatorAddCustom()">Add</button></div><div>'+customHtml+'</div></div>';
   }
   if(status==="others") details='<div class="ec-section"><label class="ec-label">Who is responsible?</label><input class="inp" id="ec-responsible" value="'+edgeCreatorEsc(state.responsible[no]||"")+'" placeholder="e.g. Landlord-appointed contractor" onchange="edgeCreatorSaveAndPersist()"></div>';
@@ -251,7 +257,7 @@ function edgeCreatorReviewHtml(){
       '<td><select class="inp" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;unit&quot;,this.value)">'+["item","no","m²","lm","p","sum"].map(function(v){return '<option '+(edgeCreatorUnit(row.unit)===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select></td>'+
       '<td><input class="inp" type="number" min="0" step="0.01" value="'+edgeCreatorEsc(row.selling||"")+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;selling&quot;,this.value)"></td>'+
       '<td><input class="inp" type="number" min="0" step="0.01" value="'+edgeCreatorEsc(row.cost||"")+'" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;cost&quot;,this.value)"></td>'+
-      '<td><select class="inp" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;capture&quot;,this.value)">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return '<option '+(row.capture===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select></td></tr>';}).join("")+
+      '<td><select class="inp" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;capture&quot;,this.value)">'+EDGE_CREATOR_CAPTURE_METHODS.map(function(v){return '<option '+(row.capture===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select>'+(row.capture==='Count'?'<div style="display:flex;align-items:center;gap:6px;margin-top:6px;"><span class="ec-meta">Marker</span><input class="inp" maxlength="2" style="min-width:38px;width:38px;" value="'+edgeCreatorEsc(row.countMarker||'')+'" placeholder="Optional" oninput="this.value=normaliseCountMarker(this.value)" onchange="edgeCreatorOverride(&quot;'+row.id+'&quot;,&quot;countMarker&quot;,this.value)"></div>':'')+'</td></tr>';}).join("")+
     '</tbody></table></div>':'<div class="ec-empty">No included activities have been selected yet.</div>';
   return '<h3 style="font-size:22px;margin-bottom:3px;">Review the generated EdgeBook</h3><p class="ec-help">Descriptions, rates and capture methods can be edited here or later under Manage Activities.</p>'+
     '<div class="ec-summary"><div><strong>'+reviewed+'</strong><span>Bills reviewed</span></div><div><strong>'+rows.length+'</strong><span>Activities</span></div><div><strong>'+client.length+'</strong><span>Client questions</span></div><div><strong>'+actions.length+'</strong><span>Internal actions</span></div></div>'+notice+table+
@@ -304,7 +310,7 @@ function edgeCreatorAddCustom(){
   const root=document.getElementById("edgebook-creator"),no=edgeCreatorCurrentNo();
   const cat=root.querySelector("#ec-custom-category").value.trim(),desc=root.querySelector("#ec-custom-description").value.trim();
   if(!cat||!desc){edgeCreatorError("Enter both a category and description for the project-specific activity.");return;}
-  EDGEBOOK_CREATOR_STATE.custom[no].push({id:"custom-"+no+"-"+Date.now(),billNo:no,bill:OFFICE_FITOUT_BILLS[no-1],category:cat,description:desc,unit:root.querySelector("#ec-custom-unit").value,selling:"",cost:"",capture:root.querySelector("#ec-custom-capture").value});
+  EDGEBOOK_CREATOR_STATE.custom[no].push({id:"custom-"+no+"-"+Date.now(),billNo:no,bill:OFFICE_FITOUT_BILLS[no-1],category:cat,description:desc,unit:root.querySelector("#ec-custom-unit").value,selling:"",cost:"",capture:root.querySelector("#ec-custom-capture").value,countMarker:root.querySelector("#ec-custom-capture").value==='Count'?normaliseCountMarker(root.querySelector("#ec-custom-marker").value):''});
   edgeCreatorPersist();edgeCreatorRenderScreen();
 }
 function edgeCreatorRemoveCustom(id){
@@ -339,6 +345,7 @@ function edgeCreatorOverride(id,field,value){
   if(!EDGEBOOK_CREATOR_STATE.overrides[id]) EDGEBOOK_CREATOR_STATE.overrides[id]={};
   EDGEBOOK_CREATOR_STATE.overrides[id][field]=value;
   edgeCreatorPersist();
+  if(field==='capture') edgeCreatorRenderScreen();
 }
 function edgeCreatorError(message){
   const el=document.querySelector("#edgebook-creator #ec-error");
@@ -352,12 +359,12 @@ function edgeCreatorExportDraft(){
   if(typeof XLSX==="undefined"){edgeCreatorError("Excel support could not load. Check your internet connection and try again.");return;}
   const rows=edgeCreatorOutputRows();
   if(!rows.length){edgeCreatorError("Select at least one included activity before exporting.");return;}
-  const activities=[["Bill No","Bill","Category","Description","Unit","Selling Rate","Cost Rate","Capture Method"]];
-  rows.forEach(function(row){activities.push([row.billNo,row.bill,row.category,row.description,edgeCreatorUnit(row.unit),row.selling===""||row.selling==null?null:Number(row.selling),row.cost===""||row.cost==null?null:Number(row.cost),row.capture]);});
+  const activities=[["Bill No","Bill","Category","Description","Unit","Selling Rate","Cost Rate","Capture Method","Count marker"]];
+  rows.forEach(function(row){activities.push([row.billNo,row.bill,row.category,row.description,edgeCreatorUnit(row.unit),row.selling===""||row.selling==null?null:Number(row.selling),row.cost===""||row.cost==null?null:Number(row.cost),row.capture,row.countMarker||'']);});
   const questions=[["Reference","Bill","Question"]].concat(edgeCreatorClientQuestions().map(function(x){return [x.billNo,x.bill,x.text];}));
   const actions=[["Internal Action"]].concat(edgeCreatorInternalActions().map(function(x){return [x];}));
   const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(activities);
-  ws["!cols"]=[{wch:9},{wch:34},{wch:24},{wch:72},{wch:9},{wch:14},{wch:12},{wch:18}];
+  ws["!cols"]=[{wch:9},{wch:34},{wch:24},{wch:72},{wch:9},{wch:14},{wch:12},{wch:18},{wch:14}];
   XLSX.utils.book_append_sheet(wb,ws,"Activities");
   const qws=XLSX.utils.aoa_to_sheet(questions);qws["!cols"]=[{wch:12},{wch:34},{wch:90}];XLSX.utils.book_append_sheet(wb,qws,"Client Questions");
   const aws=XLSX.utils.aoa_to_sheet(actions);aws["!cols"]=[{wch:110}];XLSX.utils.book_append_sheet(wb,aws,"Internal Actions");
@@ -401,7 +408,7 @@ async function edgeCreatorApply(){
       catMap[identity]=key;labels[key]=catName;catBill[key]=billMap[no];catOrder.push(key);
     }
     const selling=Number(row.selling),cost=Number(row.cost);
-    activities.push({id:nextAct++,bill:billMap[no],cat:catMap[identity],description:String(row.description||'').trim(),unit:edgeCreatorUnit(row.unit),rate:Number.isFinite(selling)&&selling>=0?selling:0,costRate:Number.isFinite(cost)&&cost>=0?cost:0,captureMethod:normaliseCaptureMethod(row.capture),addedBy:'EdgeBook Creator'});
+    activities.push({id:nextAct++,bill:billMap[no],cat:catMap[identity],description:String(row.description||'').trim(),unit:edgeCreatorUnit(row.unit),rate:Number.isFinite(selling)&&selling>=0?selling:0,costRate:Number.isFinite(cost)&&cost>=0?cost:0,captureMethod:normaliseCaptureMethod(row.capture),countMarker:row.countMarker||'',addedBy:'EdgeBook Creator'});
   });
   bills.sort((a,b)=>a.sortNo-b.sortNo);
   const book={BILLS:bills,CAT_LABELS:labels,CAT_BILL:catBill,CAT_ORDER:catOrder,ACTIVITIES:activities,actNextId:nextAct,billNextId:nextBill};

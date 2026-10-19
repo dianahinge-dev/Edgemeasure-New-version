@@ -65,3 +65,16 @@ Ask each tester to build a short EdgeBook with at least two included bills, then
 ## Safety rule
 
 The creator will not replace an EdgeBook after plan measurements or scoped quantities have been captured, because those quantities are linked to the existing activity IDs.
+
+
+## 19 October update: quick check after deployment
+
+1. Open an existing project and confirm the quantities and E/D/P markers remain.
+2. Under Manage Activities, edit a Count activity and set its marker to C. Check the plan and hover label, then save and reopen the project.
+3. Export the EdgeBook to Excel: Count marker should be the last optional column.
+4. Export the BOQ: automatic From plan / counted on plan text should be absent; entered notes should remain.
+5. Print a plan and confirm the legend shows only count symbols used by visible items on that page. Lines, areas and plain numbered counts should be absent. On a page with no lettered count markers, the legend should disappear.
+
+6. Set separate Count markers DK, DA and DR; confirm both letters appear on the plan, legend and exported EdgeBook, and remain after saving/reopening or re-importing. Existing one-letter markers and blank numbered markers should still work.
+
+7. Use the same marker for activities in several categories within a Bill: the legend should show that marker once with the Bill name. A different marker in the same Bill should retain its own entry. Hover labels should continue to show category names.

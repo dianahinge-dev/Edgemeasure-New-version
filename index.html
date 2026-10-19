@@ -952,6 +952,10 @@ select.inp{cursor:pointer;}
         <span id="measure-status">Select a tool and click on the plan to start measuring.</span>
         <button id="btn-cal-flip" onclick="flipCalibration()" title="Flip calibration annotation to other side" style="display:none;padding:2px 7px;border-radius:4px;border:1px solid var(--brand);background:transparent;cursor:pointer;font-size:10px;font-weight:700;color:var(--brand);flex-shrink:0;">⇅ Flip</button>
       </div>
+      <details id="count-legend" style="display:none;padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;flex-shrink:0;" open>
+        <summary style="cursor:pointer;color:var(--text3);font-weight:700;">Capture symbols</summary>
+        <div id="count-legend-items" style="display:flex;flex-wrap:wrap;gap:6px 16px;max-height:110px;overflow:auto;padding-top:6px;"></div>
+      </details>
       <!-- Canvas container -->
       <div style="flex:1;overflow:auto;position:relative;cursor:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='37' height='37' viewBox='0 0 37 37'%3E%3Cpath d='M18.5 2v13M18.5 22v13M2 18.5h13M22 18.5h13' stroke='%23111827' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M18.5 2v13M18.5 22v13M2 18.5h13M22 18.5h13' stroke='%23a78bfa' stroke-width='1.25' stroke-linecap='round'/%3E%3Ccircle cx='18.5' cy='18.5' r='1.75' fill='%23a78bfa' stroke='%23111827' stroke-width='1'/%3E%3C/svg%3E&quot;) 18 18,crosshair;display:flex;align-items:flex-start;justify-content:flex-start;" id="canvas-container">
         <canvas id="measure-canvas" style="display:block;margin:0 auto;flex-shrink:0;"></canvas>
@@ -1071,7 +1075,7 @@ select.inp{cursor:pointer;}
 ═══════════════════════════════════════════════ */
 const STAGE_PALETTE=['#fbbf24','#34d399','#60a5fa','#f472b6','#a78bfa','#fb923c','#f87171','#e2e8f0'];
 const STAGE_EMOJIS=['🎯','📋','🔨','⚡','🚀','💡','🏗️','✅'];
-const CAPTURE_METHODS=['Count','Count E','Count D','Count P','Linear','Perimeter','SQM','Wall Height','Wall SQM','Wall Linear'];
+const CAPTURE_METHODS=['Count','Linear','Perimeter','SQM','Wall Height','Wall SQM','Wall Linear'];
 const CAPTURE_PROFILES={
   'Count':{tool:'count',visual:'count',symbol:'',color:'#a78bfa'},
   'Count E':{tool:'count',visual:'symbol',symbol:'E',color:'#fbbf24'},
@@ -1098,9 +1102,35 @@ function isKnownCaptureMethod(method){
   const key=String(method||'').trim().toLowerCase();
   return ['count','count e','count d','count p','linear','perimeter','sqm','measure ceiling','stairs','measure walls','wall height','wall sqm','wall linear'].includes(key);
 }
-function getCaptureProfile(method){
+function normaliseCountMarker(value){
+  return String(value??'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,2);
+}
+function getCaptureProfile(method,marker){
   const normal=normaliseCaptureMethod(method);
-  return {method:normal,...CAPTURE_PROFILES[normal]};
+  const profile={method:normal,...CAPTURE_PROFILES[normal]};
+  if(profile.tool==='count'){
+    profile.symbol=marker==null?profile.symbol:normaliseCountMarker(marker);
+    profile.visual=profile.symbol?'symbol':'count';
+    // Preserve the familiar discipline colours after importing older books.
+    const legacy=CAPTURE_PROFILES['Count '+profile.symbol];
+    if(legacy) profile.color=legacy.color;
+  }
+  return profile;
+}
+function normaliseActivityCapture(activity){
+  const profile=getCaptureProfile(activity.captureMethod,activity.countMarker);
+  activity.captureMethod=profile.tool==='count'?'Count':profile.method;
+  activity.countMarker=profile.tool==='count'?profile.symbol:'';
+  return activity;
+}
+function toggleCountMarkerField(selectId,fieldId){
+  const method=document.getElementById(selectId)?.value;
+  const field=document.getElementById(fieldId);
+  if(field) field.style.display=getCaptureProfile(method).tool==='count'?'':'none';
+}
+function activityCaptureLabel(activity){
+  const profile=getCaptureProfile(activity.captureMethod,activity.countMarker);
+  return profile.tool==='count'?'Count'+(profile.symbol?' · '+profile.symbol:''):profile.method;
 }
 const UNITS=['m²','lm','no','p','item','sum'];
 
@@ -1206,7 +1236,7 @@ function sanitiseAppTextFields(){
   LOCATIONS.forEach(l=>{l.name=cleanPlainText(l.name);(l.areas||[]).forEach(a=>a.name=cleanPlainText(a.name));});
   BILLS.forEach(b=>b.name=cleanPlainText(b.name));
   Object.keys(CAT_LABELS).forEach(k=>CAT_LABELS[k]=cleanPlainText(CAT_LABELS[k]));
-  ACTIVITIES.forEach(a=>{a.description=cleanPlainText(a.description);a.unit=cleanPlainText(a.unit);});
+  ACTIVITIES.forEach(a=>{a.description=cleanPlainText(a.description);a.unit=cleanPlainText(a.unit);normaliseActivityCapture(a);});
   CAPTURES.forEach(c=>c.notes=cleanPlainText(c.notes));
   PLANS.forEach(p=>{p.name=cleanPlainText(p.name);p.sourceName=cleanPlainText(p.sourceName);});
   ITEM_TYPES.forEach(it=>it.name=cleanPlainText(it.name));
@@ -1650,7 +1680,7 @@ function renderActivitiesTab(){
           <td><span class="unit-badge">${a.unit||'—'}</span></td>
           <td class="rate-cell" style="text-align:right;color:var(--text);">R${fmtR(Number(a.rate||0))}</td>
           <td class="rate-cell" style="text-align:right;color:var(--text3);">${a.costRate?'R'+fmtR(a.costRate):'—'}</td>
-          <td><span style="font-size:11px;color:var(--text4);">${a.captureMethod||'—'}</span></td>
+          <td><span style="font-size:11px;color:var(--text4);">${activityCaptureLabel(a)}</span></td>
           <td style="white-space:nowrap;">
             <button class="del-btn" onclick="editActivity(${a.id})" style="color:var(--brand);">Edit</button>
             <button class="del-btn" onclick="deleteActivity(${a.id})">Remove</button>
@@ -1675,7 +1705,9 @@ function editActivity(id){
   const billOpts=reusableSortedBills().map(b=>`<option value="${b.id}" ${b.id===a.bill?'selected':''}>${b.name}</option>`).join('');
   const catOpts=sortedCats().filter(c=>!isProjectOnlyCategory(c)).map(c=>`<option value="${c}" ${c===a.cat?'selected':''}>${(CAT_LABELS[c]||c.split('__').pop().replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()))}</option>`).join('');
   const unitOpts=UNITS.map(u=>`<option ${u===a.unit?'selected':''}>${u}</option>`).join('');
-  const methodOpts=CAPTURE_METHODS.map(m=>`<option ${m===a.captureMethod?'selected':''}>${m}</option>`).join('');
+  const currentProfile=getCaptureProfile(a.captureMethod,a.countMarker);
+  const currentMethod=currentProfile.tool==='count'?'Count':currentProfile.method;
+  const methodOpts=CAPTURE_METHODS.map(m=>`<option ${m===currentMethod?'selected':''}>${m}</option>`).join('');
   row.querySelector('td').innerHTML=`
     <div style="padding:12px 14px;background:var(--surface2);border-top:1px solid var(--border);">
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
@@ -1692,7 +1724,9 @@ function editActivity(id){
         <div><label class="field-label" style="font-size:9px;">Cost Rate (R)</label>
           <input class="inp" id="ea-cost-${id}" type="text" inputmode="decimal" value="${a.costRate||0}" style="font-size:12px;"/></div>
         <div><label class="field-label" style="font-size:9px;">Capture</label>
-          <select class="inp" id="ea-method-${id}" style="font-size:12px;">${methodOpts}</select></div>
+          <select class="inp" id="ea-method-${id}" style="font-size:12px;" onchange="toggleCountMarkerField('ea-method-${id}','ea-marker-field-${id}')">${methodOpts}</select></div>
+        <div id="ea-marker-field-${id}" style="${currentProfile.tool==='count'?'':'display:none;'}"><label class="field-label" style="font-size:9px;">Count marker (optional)</label>
+          <input class="inp" id="ea-marker-${id}" maxlength="2" value="${currentProfile.symbol||''}" placeholder="e.g. DK" style="font-size:12px;" oninput="this.value=normaliseCountMarker(this.value)" title="Up to two letters or numbers. Leave blank for numbered markers."/></div>
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-brand" onclick="saveEditActivity(${id})" style="font-size:11px;padding:6px 16px;">Save</button>
@@ -1712,7 +1746,9 @@ function saveEditActivity(id){
   const a=ACTIVITIES.find(a=>a.id===id);
   if(!a) return;
   const nextMethod=normaliseCaptureMethod(document.getElementById(`ea-method-${id}`)?.value||a.captureMethod);
-  const methodChanged=nextMethod!==normaliseCaptureMethod(a.captureMethod);
+  const previousProfile=getCaptureProfile(a.captureMethod,a.countMarker);
+  const previousMethod=previousProfile.tool==='count'?'Count':previousProfile.method;
+  const methodChanged=nextMethod!==previousMethod;
   if(methodChanged&&(MEASUREMENTS.some(m=>m.actId===id)||CAPTURES.some(c=>c.actId===id))){
     alert('This activity already controls project quantities, so its capture method cannot be changed in place. Create a new activity with the new method, then duplicate or reassign the relevant measurements.');
     return;
@@ -1726,7 +1762,9 @@ function saveEditActivity(id){
   a.rate=Number.isFinite(sell)&&sell>=0?sell:0;
   a.costRate=Number.isFinite(cost)&&cost>=0?cost:0;
   a.captureMethod=nextMethod;
-  markEdgeBookDirty();saveToStorage();renderActivitiesTab();
+  a.countMarker=nextMethod==='Count'?normaliseCountMarker(document.getElementById(`ea-marker-${id}`)?.value):'';
+  MEASUREMENTS.filter(m=>m.actId===id).forEach(m=>{m.countMarker=a.countMarker;});
+  markEdgeBookDirty();saveToStorage();renderActivitiesTab();redrawCanvas();updateCountLegend();
 }
 function deleteActivity(id){
   const usedByCaptures=CAPTURES.filter(c=>c.actId===id).length;
@@ -1754,7 +1792,8 @@ function showAddActivity(){
       <div><label class="field-label">Unit</label><select class="inp" id="na-unit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select></div>
       <div><label class="field-label">Selling Rate (R)</label><input class="inp" id="na-rate" type="text" inputmode="decimal" placeholder="0.00"/></div>
       <div><label class="field-label">Cost Rate (R)</label><input class="inp" id="na-cost" type="text" inputmode="decimal" placeholder="0.00"/></div>
-      <div><label class="field-label">Capture method</label><select class="inp" id="na-method">${CAPTURE_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+      <div><label class="field-label">Capture method</label><select class="inp" id="na-method" onchange="toggleCountMarkerField('na-method','na-marker-field')">${CAPTURE_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+      <div id="na-marker-field"><label class="field-label">Count marker (optional)</label><input class="inp" id="na-marker" maxlength="2" placeholder="e.g. DK — blank for numbered markers" oninput="this.value=normaliseCountMarker(this.value)"/></div>
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-brand" onclick="saveNewActivity()">Save to EdgeBook</button>
@@ -1798,7 +1837,7 @@ function saveNewActivity(){
       cat=newKey;
     }
   }
-  ACTIVITIES.push({id:actNextId++,bill:billId,cat,description:desc,unit,rate,costRate,captureMethod:method,addedBy:''});
+  ACTIVITIES.push({id:actNextId++,bill:billId,cat,description:desc,unit,rate,costRate,captureMethod:method,countMarker:method==='Count'?normaliseCountMarker(document.getElementById('na-marker')?.value):'',addedBy:''});
   markEdgeBookDirty();saveToStorage();
   document.getElementById('activity-add-form').style.display='none';
   renderActivitiesTab();
@@ -2698,7 +2737,15 @@ function fmtR(n){
   return Number(n||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function captureNoteText(caps){
-  return [...new Set((caps||[]).map(c=>cleanPlainText(c.notes)).filter(Boolean))].join(' · ');
+  return [...new Set((caps||[]).map(c=>{
+    const note=cleanPlainText(c.notes);
+    if(/^from plan[.!]?$/i.test(note)) return '';
+    const act=ACTIVITIES.find(a=>a.id===c.actId);
+    const automaticCount=`${c.count} × ${act?.description||''} counted on plan`;
+    if(note===automaticCount) return '';
+    if((c.sourceType==='plan'||c.sourceMeasurementId)&&/^\d+ × .+ counted on plan$/.test(note)) return '';
+    return note;
+  }).filter(Boolean))].join(' · ');
 }
 function boqDescriptionHTML(act,caps){
   const note=captureNoteText(caps);
@@ -3509,6 +3556,7 @@ const SCOPE_FIELDS=[
   {key:'rate',        label:'Selling Rate',      req:true,  desc:'Selling price per unit'},
   {key:'costRate',    label:'Cost Rate',         req:false, desc:'Your cost per unit (optional)'},
   {key:'method',      label:'Capture Method',    req:true,  desc:'Count, Linear, SQM, Wall Height etc.'},
+  {key:'countMarker', label:'Count marker', req:false, desc:'Optional one- or two-character marker for Count activities'},
 ];
 function guessMapping(appKey,headers){
   const guesses={
@@ -3520,6 +3568,7 @@ function guessMapping(appKey,headers){
     rate:       ['selling rate','sell rate','selling price','sell price','unit price','rate'],
     costRate:   ['cost rate','unit cost','cost price','cost'],
     method:     ['capture','method','input type','inputtype','capture method'],
+    countMarker:['count marker','countmarker','marker'],
   };
   const patterns=guesses[appKey]||[];
   const hl=headers.map(h=>h.toLowerCase().trim());
@@ -3565,6 +3614,7 @@ function runImport(){
   const rateCol=get('rate');
   const costRateCol=get('costRate');
   const methodCol=get('method');
+  const markerCol=get('countMarker');
   const missing=[];
   if(!billCol) missing.push('Bill');
   if(!catCol) missing.push('Category');
@@ -3589,7 +3639,10 @@ function runImport(){
       invalid.push(`Row ${index+2}: ${!billName?'missing bill':!catName?'missing category':!unit?'missing unit':!Number.isFinite(rate)||rate<0?'invalid selling rate':'missing capture method'}`);
       return;
     }
-    stagedRows.push({row,billName,catName,desc,unit,rate,method:normaliseCaptureMethod(rawMethod)});
+    const marker=markerCol?String(row[markerCol]??'').trim():'';
+    if(marker&&!/^[a-z0-9]{1,2}$/i.test(marker)){invalid.push(`Row ${index+2}: count marker must be one or two letters or numbers`);return;}
+    const activity=normaliseActivityCapture({captureMethod:rawMethod,countMarker:marker||undefined});
+    stagedRows.push({row,billName,catName,desc,unit,rate,method:activity.captureMethod,countMarker:activity.countMarker});
   });
   if(invalid.length){
     showImportStatus('error',`Nothing was imported. Fix ${invalid.length} invalid row${invalid.length!==1?'s':''} first. ${invalid.slice(0,3).join(' · ')}`);
@@ -3600,7 +3653,7 @@ function runImport(){
   const check=`Replace the current EdgeBook with ${stagedRows.length} validated activities?\n\nSelling Rate: ${rateCol}\nCost Rate: ${costRateCol||'not mapped'}\nCapture Method: ${methodCol}${missingCost?`\n\n${missingCost} row${missingCost!==1?'s':''} will have a zero cost rate.`:''}`;
   const tagged=MEASUREMENTS.filter(m=>m.actId).length;
   if(!confirm(check+(tagged?`\n\n${tagged} unsent plan measurement${tagged===1?'':'s'} will lose their activity tags, while their geometry stays on the plan.`:''))) return;
-  if(tagged) MEASUREMENTS.forEach(m=>{if(!m.sent){m.actId=null;m.captureMethod=null;m.annotationStyle=null;}});
+  if(tagged) MEASUREMENTS.forEach(m=>{if(!m.sent){m.actId=null;m.captureMethod=null;m.countMarker=null;m.annotationStyle=null;}});
   measureContext.actId=null;
   CURRENT_EDGEBOOK_ID=null;CURRENT_EDGEBOOK_NAME='Imported Excel';
   BILLS=[];
@@ -3608,7 +3661,7 @@ function runImport(){
   Object.keys(CAT_BILL).forEach(k=>delete CAT_BILL[k]);
   ACTIVITIES.length=0;actNextId=1;billNextId=1;CAT_ORDER.length=0;
   const billMap={};let imported=0;
-  stagedRows.forEach(({row,billName,catName,desc,unit,rate,method})=>{
+  stagedRows.forEach(({row,billName,catName,desc,unit,rate,method,countMarker})=>{
     const billNo=billNoCol?parseInt(row[billNoCol])||999:999;
     const parsedCost=costRateCol?parseLocaleNumber(row[costRateCol]):0;
     const costRate=Number.isFinite(parsedCost)&&parsedCost>=0?parsedCost:0;
@@ -3629,7 +3682,7 @@ function runImport(){
       catKey=prefix+catName.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'').toLowerCase();
       if(catKey&&!CAT_LABELS[catKey]){CAT_LABELS[catKey]=catName;if(billId) CAT_BILL[catKey]=billId;}
     }
-    ACTIVITIES.push({id:actNextId++,bill:billId,cat:catKey||catName,description:desc,unit,rate,costRate,captureMethod:method,addedBy:'Import'});
+    ACTIVITIES.push({id:actNextId++,bill:billId,cat:catKey||catName,description:desc,unit,rate,costRate,captureMethod:method,countMarker,addedBy:'Import'});
     imported++;
   });
   // Sort bills by Bill No if provided
@@ -3644,14 +3697,12 @@ function runImport(){
 function downloadCatalogTemplate(){
   if(typeof XLSX==='undefined'){alert('Excel support could not load. Check your internet connection and try again.');return;}
   const wb=XLSX.utils.book_new();
-  const activities=XLSX.utils.aoa_to_sheet([['Bill No','Bill','Category','Description','Unit','Selling Rate','Cost Rate','Capture Method']]);
-  activities['!cols']=[{wch:9},{wch:24},{wch:24},{wch:50},{wch:10},{wch:14},{wch:14},{wch:18}];
+  const activities=XLSX.utils.aoa_to_sheet([['Bill No','Bill','Category','Description','Unit','Selling Rate','Cost Rate','Capture Method','Count marker']]);
+  activities['!cols']=[{wch:9},{wch:24},{wch:24},{wch:50},{wch:10},{wch:14},{wch:14},{wch:18},{wch:14}];
   XLSX.utils.book_append_sheet(wb,activities,'Activities');
   const keyRows=[['Capture Method','Use','Plan annotation'],
-    ['Count','General furniture and items','Numbered count marker'],
-    ['Count E','Electrical points','Electrical E symbol'],
-    ['Count D','Data points','Data D symbol'],
-    ['Count P','Plumbing points','Plumbing P symbol'],
+    ['Count','Furniture, electrical, data, plumbing and other items','Optional Count marker: E, DK, DA, DR or up to two letters/numbers. Blank = numbered markers.'],
+    ['Count E / D / P','Older EdgeBooks remain supported','Imported as Count with marker E, D or P'],
     ['Linear','Cable, pipe and other runs','Thin line'],
     ['Perimeter','Closed perimeter','Outline'],
     ['SQM','Floors, ceilings and other areas','Area fill'],
@@ -3669,23 +3720,21 @@ function exportCurrentEdgeBook(){
   const reusable=ACTIVITIES.filter(a=>!a.projectOnly);
   if(!reusable.length){alert('There are no reusable EdgeBook activities to export yet.');return;}
   const wb=XLSX.utils.book_new();
-  const rows=[['Bill No','Bill','Category','Description','Unit','Selling Rate','Cost Rate','Capture Method']];
+  const rows=[['Bill No','Bill','Category','Description','Unit','Selling Rate','Cost Rate','Capture Method','Count marker']];
   const billOrder=new Map(reusableSortedBills().map((b,i)=>[b.id,b.sortNo||i+1]));
   reusable.forEach(a=>{
     const bill=BILLS.find(b=>b.id===a.bill);
     rows.push([
       billOrder.get(a.bill)||'',bill?billDisplayName(bill.name):'',CAT_LABELS[a.cat]||'',
-      a.description,a.unit,a.rate||0,a.costRate||0,normaliseCaptureMethod(a.captureMethod)
+      a.description,a.unit,a.rate||0,a.costRate||0,getCaptureProfile(a.captureMethod).tool==='count'?'Count':normaliseCaptureMethod(a.captureMethod),getCaptureProfile(a.captureMethod,a.countMarker).symbol||''
     ]);
   });
   const activities=XLSX.utils.aoa_to_sheet(rows);
-  activities['!cols']=[{wch:9},{wch:24},{wch:24},{wch:50},{wch:10},{wch:14},{wch:14},{wch:18}];
+  activities['!cols']=[{wch:9},{wch:24},{wch:24},{wch:50},{wch:10},{wch:14},{wch:14},{wch:18},{wch:14}];
   XLSX.utils.book_append_sheet(wb,activities,'Activities');
   const keyRows=[['Capture Method','Use','Plan annotation'],
-    ['Count','General furniture and items','Numbered count marker'],
-    ['Count E','Electrical points','Electrical E symbol'],
-    ['Count D','Data points','Data D symbol'],
-    ['Count P','Plumbing points','Plumbing P symbol'],
+    ['Count','Furniture, electrical, data, plumbing and other items','Optional Count marker: E, DK, DA, DR or up to two letters/numbers. Blank = numbered markers.'],
+    ['Count E / D / P','Older EdgeBooks remain supported','Imported as Count with marker E, D or P'],
     ['Linear','Cable, pipe and other runs','Thin line'],
     ['Perimeter','Closed perimeter','Outline'],
     ['SQM','Floors, ceilings and other areas','Area fill'],
@@ -3817,7 +3866,7 @@ function activeContextArea(){
   return LOCATIONS.find(l=>l.id===measureContext.locId)?.areas.find(a=>a.id===measureContext.areaId)||null;
 }
 function ensureContextWallHeight(act){
-  const profile=getCaptureProfile(act?.captureMethod);
+  const profile=getCaptureProfile(act?.captureMethod,act?.countMarker);
   if(!profile.height) return null;
   const area=activeContextArea();
   if(!area) return null;
@@ -3986,7 +4035,7 @@ function updateMeasureContext(field,value){
     // Auto-switch tool based on capture method
     const act=ACTIVITIES.find(a=>a.id===parseInt(value));
     if(act){
-      const profile=getCaptureProfile(act.captureMethod);
+      const profile=getCaptureProfile(act.captureMethod,act.countMarker);
       setMeasureColor(profile.color,false);
       setMeasureTool(profile.tool);
       ensureContextWallHeight(act);
@@ -4261,6 +4310,7 @@ function drawCanvas(img,pageData,plan,mouseX,mouseY){
   const ctx=canvas.getContext('2d');
   ctx.clearRect(0,0,pageData.w,pageData.h);
   ctx.drawImage(img,0,0,pageData.w,pageData.h);
+  updateCountLegend();
   // Draw saved measurements for this page
   const pageMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage);
   pageMeasurements.forEach(m=>drawMeasurement(ctx,m,plan,m.id===_hoverMeasurementId));
@@ -4270,6 +4320,7 @@ function drawCanvas(img,pageData,plan,mouseX,mouseY){
 
 let _mouseX=0,_mouseY=0,_hoverMeasurementId=null,_shiftOverride=false;
 function redrawCanvas(mouseX,mouseY){
+  updateCountLegend();
   const canvas=document.getElementById('measure-canvas');
   if(canvas&&canvas._img) drawCanvas(canvas._img,canvas._pageData,canvas._plan,mouseX,mouseY);
 }
@@ -4360,7 +4411,7 @@ function printAnnotatedPlan(){
   win.document.write(`<!DOCTYPE html>
 <html>
 <head>
-<title>${planName}</title>
+<title>${escHtml(planName)}</title>
 <style>
   @page { size: A3 landscape; margin: 10mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -4370,16 +4421,18 @@ function printAnnotatedPlan(){
   .plan-meta { font-size: 10px; color: #666; text-align: right; }
   img { max-width: 100%; max-height: calc(100vh - 30mm); object-fit: contain; display: block; }
   @media print {
-    body { min-height: unset; }
-    img { max-height: calc(297mm - 30mm); }
+    body { min-height: unset; height: 277mm; }
+    .header, .plan-legend { flex-shrink: 0; }
+    img { max-height: none; min-height: 0; flex: 1; width: 100%; }
   }
 </style>
 </head>
 <body>
 <div class="header">
-  <div class="plan-name">${planName}</div>
+  <div class="plan-name">${escHtml(planName)}</div>
   <div class="plan-meta">Annotated Plan · Page ${activePlanPage}${getPlanScale(plan)?` · Scale calibrated`:''} · ${new Date().toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'})}</div>
 </div>
+<div class="plan-legend" style="display:flex;flex-wrap:wrap;gap:6px 18px;width:100%;font-size:10px;margin-bottom:3mm;">${planLegendHTML()}</div>
 <img src="${dataUrl}" />
 <script>window.onload=function(){window.print();}<\/script>
 </body>
@@ -4459,7 +4512,7 @@ function drawCalibrationAnnotation(ctx,m,plan){
 
 function measurementProfile(m){
   const act=ACTIVITIES.find(a=>a.id===m.actId);
-  return getCaptureProfile(act?.captureMethod||m.captureMethod);
+  return getCaptureProfile(act?.captureMethod||m.captureMethod,act?act.countMarker:m.countMarker);
 }
 
 function drawMeasurementLabel(ctx,m,x,y,color){
@@ -4467,7 +4520,7 @@ function drawMeasurementLabel(ctx,m,x,y,color){
   const act=ACTIVITIES.find(a=>a.id===m.actId);
   const unit=m.mode==='count'?'no':m.type==='area'?'m²':m.type==='perimeter'?'lm':'m';
   const value=m.mode==='count'?(m.points?.length||0):Number(m.valueM||0).toFixed(2);
-  const label=`${act?.description||m.label||'Measurement'} · ${value}${unit}`;
+  const label=`${measurementCategory(m)} · ${value}${unit}`;
   ctx.font=`bold ${13*S}px Arial`;
   ctx.textAlign='center';ctx.textBaseline='middle';
   const tw=ctx.measureText(label).width;
@@ -4494,12 +4547,12 @@ function drawMeasurement(ctx,m,plan,highlight,showLabel=highlight){
   if(m.mode==='count'){
     m.points.forEach((p,i)=>{
       const px=p.x, py=p.y;
-      const r=7.5*S;
+      const r=(profile.symbol?.length===2?9:7.5)*S;
       ctx.beginPath();ctx.arc(px,py,r+1.5*S,0,Math.PI*2);
       ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();
       ctx.beginPath();ctx.arc(px,py,r,0,Math.PI*2);
       ctx.fillStyle=color;ctx.fill();
-      ctx.font=`bold ${9*S}px Arial`;
+      ctx.font=`bold ${(profile.symbol?.length===2?8.5:9)*S}px Arial`;
       ctx.fillStyle='#000';
       ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(profile.symbol||String(i+1),px,py);
@@ -4518,9 +4571,10 @@ function drawMeasurement(ctx,m,plan,highlight,showLabel=highlight){
   segmentsToDraw.forEach(pts=>{
     const scaled=pts;
     const thickWall=profile.visual==='wall-thick';
-    const baseWidth=(thickWall?7:2)*S;
+    const widthScale=profile.height?0.8:1;
+    const baseWidth=(thickWall?7:2)*S*widthScale;
     ctx.setLineDash([]);
-    ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=baseWidth+(highlight?2*S:1*S);
+    ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=baseWidth+(highlight?2*S:1*S)*widthScale;
     ctx.beginPath();
     if(m.type==='linear'||m.type==='calibrate'||pts.length===2){
       ctx.moveTo(scaled[0].x,scaled[0].y);ctx.lineTo(scaled[1].x,scaled[1].y);
@@ -4530,7 +4584,7 @@ function drawMeasurement(ctx,m,plan,highlight,showLabel=highlight){
       ctx.closePath();
     }
     ctx.stroke();
-    ctx.strokeStyle=color;ctx.lineWidth=baseWidth+(highlight?1*S:0);
+    ctx.strokeStyle=color;ctx.lineWidth=baseWidth+(highlight?1*S:0)*widthScale;
     ctx.globalAlpha=thickWall?0.42:1;
     ctx.beginPath();
     if(m.type==='linear'||m.type==='calibrate'||pts.length===2){
@@ -4616,10 +4670,12 @@ function drawInProgress(ctx,plan,mouseX,mouseY){
     snapX=sp.x; snapY=sp.y; snapped=sp.snapped;
   }
 
+  const activeActivity=ACTIVITIES.find(a=>a.id===measureContext.actId);
+  const widthScale=getCaptureProfile(activeActivity?.captureMethod,activeActivity?.countMarker).height?0.8:1;
   // Draw white outline for contrast then coloured line on top
   [4,'inner'].forEach(pass=>{
     ctx.strokeStyle=pass===4?'rgba(0,0,0,0.3)':(snapped?'#ffffff':color);
-    ctx.lineWidth=pass===4?6:3;
+    ctx.lineWidth=(pass===4?6:3)*widthScale;
     ctx.setLineDash(pass===4?[]:[5,3]);
     ctx.beginPath();
     ctx.moveTo(pts[0].x,pts[0].y);
@@ -5004,11 +5060,11 @@ function addGenericCountItem(x,y,plan){
   );
   if(!m){
     const act=ACTIVITIES.find(a=>a.id===measureContext.actId);
-    const profile=getCaptureProfile(act?.captureMethod);
+    const profile=getCaptureProfile(act?.captureMethod,act?.countMarker);
     m={id:measNextId++,planId:activePlanId,page:activePlanPage,
       type:'count',mode:'count',isGroup:false,segments:null,
       points:[],valueM:0,label:act?act.description:'Count',
-      color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,annotationStyle:profile.visual,
+      color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,countMarker:profile.symbol||'',annotationStyle:profile.visual,
       deductTypeId:null,isDeduction:false,deductCount:0,typicalWidth:null,
       locId:measureContext.locId,areaId:measureContext.areaId,
       actId:measureContext.actId,sent:false,wallHeight:profile.height?activeContextArea()?.wallHeight||null:null};
@@ -5069,7 +5125,7 @@ function finishLinear(plan){
   const valueM=pxDist/getPlanScale(plan);
   const it=getItemType(measureTool);
   const act=ACTIVITIES.find(a=>a.id===measureContext.actId);
-  const profile=getCaptureProfile(act?.captureMethod);
+  const profile=getCaptureProfile(act?.captureMethod,act?.countMarker);
   if(measureContext.mode==='group'&&!it){
     // Group mode — accumulate into one running measurement
     let gm=MEASUREMENTS.find(m=>
@@ -5084,7 +5140,7 @@ function finishLinear(plan){
     if(!gm){
       gm={id:measNextId++,planId:activePlanId,page:activePlanPage,
         type:'linear',isGroup:true,segments:[],valueM:0,points:[],
-        color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,annotationStyle:profile.visual,
+        color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,countMarker:profile.symbol||'',annotationStyle:profile.visual,
         label:'',deductTypeId:null,isDeduction:false,deductCount:1,
         locId:measureContext.locId,areaId:measureContext.areaId,
         actId:measureContext.actId,sent:false,wallHeight:profile.height?activeContextArea()?.wallHeight||null:null};
@@ -5100,7 +5156,7 @@ function finishLinear(plan){
   } else {
     const m={id:measNextId++,planId:activePlanId,page:activePlanPage,
       type:measureTool,isGroup:false,segments:null,points:[...measurePoints],valueM,
-      color:it?null:measureColor,colorOverride:it?false:measureColorOverridden,captureMethod:it?null:profile.method,annotationStyle:it?null:profile.visual,
+      color:it?null:measureColor,colorOverride:it?false:measureColorOverridden,captureMethod:it?null:profile.method,countMarker:it?null:profile.symbol||'',annotationStyle:it?null:profile.visual,
       label:it?it.name:'',deductTypeId:it?it.id:null,
       isDeduction:!!(it&&it.sign==='deduct'),deductCount:1,deductHeight:it?.heightM||null,
       locId:measureContext.locId,areaId:measureContext.areaId,
@@ -5120,7 +5176,7 @@ function finishLinear(plan){
 function finishPolygon(){
   const plan=PLANS.find(p=>p.id===activePlanId);
   const act=ACTIVITIES.find(a=>a.id===measureContext.actId);
-  const profile=getCaptureProfile(act?.captureMethod);
+  const profile=getCaptureProfile(act?.captureMethod,act?.countMarker);
   // Double-click fires two click events — remove the duplicate last point
   if(measurePoints.length>0) measurePoints.pop();
   if(!plan||measurePoints.length<3){setMeasureStatus('Need at least 3 points.');return;}
@@ -5157,7 +5213,7 @@ function finishPolygon(){
     if(!gm){
       gm={id:measNextId++,planId:activePlanId,page:activePlanPage,
         type:measureTool,isGroup:true,segments:[],valueM:0,points:[],
-        color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,annotationStyle:profile.visual,
+        color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,countMarker:profile.symbol||'',annotationStyle:profile.visual,
         label:'',deductTypeId:null,isDeduction:false,deductCount:1,
         locId:measureContext.locId,areaId:measureContext.areaId,
         actId:measureContext.actId,sent:false};
@@ -5173,7 +5229,7 @@ function finishPolygon(){
   } else {
     const m={id:measNextId++,planId:activePlanId,page:activePlanPage,
       type:measureTool,isGroup:false,segments:null,points:[...measurePoints],valueM,
-      color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,annotationStyle:profile.visual,
+      color:measureColor,colorOverride:measureColorOverridden,captureMethod:profile.method,countMarker:profile.symbol||'',annotationStyle:profile.visual,
       label:'',deductTypeId:null,isDeduction:false,deductCount:1,
       locId:measureContext.locId,areaId:measureContext.areaId,
       actId:measureContext.actId,sent:false};
@@ -5191,6 +5247,7 @@ function finishPolygon(){
 }
 
 function renderMeasurementsList(){
+  updateCountLegend();
   const el=document.getElementById('measurements-list');
   if(!el) return;
   const planMeasurements=MEASUREMENTS.filter(m=>m.planId===activePlanId);
@@ -5347,7 +5404,7 @@ function updateMeasurement(id,field,value){
     m.locId=parseInt(value)||null;
     m.areaId=null;
     const currentAct=ACTIVITIES.find(a=>a.id===m.actId);
-    if(getCaptureProfile(currentAct?.captureMethod).height) m.wallHeight=null;
+    if(getCaptureProfile(currentAct?.captureMethod,currentAct?.countMarker).height) m.wallHeight=null;
     const areaEl=document.getElementById(`meas-area-${id}`);
     if(areaEl){
       const loc=LOCATIONS.find(l=>l.id===m.locId);
@@ -5357,7 +5414,7 @@ function updateMeasurement(id,field,value){
   } else if(field==='areaId'){
     m.areaId=parseInt(value)||null;
     const currentAct=ACTIVITIES.find(a=>a.id===m.actId);
-    if(getCaptureProfile(currentAct?.captureMethod).height){
+    if(getCaptureProfile(currentAct?.captureMethod,currentAct?.countMarker).height){
       const selectedArea=LOCATIONS.find(l=>l.id===m.locId)?.areas.find(a=>a.id===m.areaId);
       m.wallHeight=selectedArea?.wallHeight||null;
     }
@@ -5365,7 +5422,7 @@ function updateMeasurement(id,field,value){
     const nextActId=parseInt(value)||null;
     const nextAct=ACTIVITIES.find(a=>a.id===nextActId);
     if(nextAct&&!m.deductTypeId){
-      const profile=getCaptureProfile(nextAct.captureMethod);
+      const profile=getCaptureProfile(nextAct.captureMethod,nextAct.countMarker);
       const geometry=m.mode==='count'?'count':m.type==='area'?'area':m.type==='perimeter'?'perimeter':'linear';
       if(profile.tool!==geometry){
         alert(`This measurement is ${geometry}, but "${nextAct.description}" requires ${profile.tool}. Duplicate or remeasure it with an activity that uses the same capture shape.`);
@@ -5373,6 +5430,7 @@ function updateMeasurement(id,field,value){
         return;
       }
       m.captureMethod=profile.method;
+      m.countMarker=profile.symbol||'';
       m.annotationStyle=profile.visual;
       if(profile.height&&!m.wallHeight){
         const selectedArea=LOCATIONS.find(l=>l.id===m.locId)?.areas.find(a=>a.id===m.areaId);
@@ -5440,12 +5498,12 @@ function buildScopeCaptureFromMeasurement(m,act){
     }
   }else if(isCountMode){
     total=count;
-    notes=`${count} × ${it?it.name:act.description} counted on plan`;
+    notes=m.label||'';
   }else{
     const wallMethod=isWallCaptureMethod(method);
     const wallH=wallMethod&&m.wallHeight?parseFloat(m.wallHeight):null;
     total=wallMethod&&wallH?parseFloat(m.valueM.toFixed(3))*wallH:m.valueM;
-    notes=m.label||'From plan';
+    notes=m.label||'';
   }
   const cap={
     locId:m.locId,areaId:m.areaId,actId:m.actId,
@@ -5753,56 +5811,42 @@ function clearCalibration(){
   refreshCalibrationUI(plan);
   scheduleAutoSave();
 }
-let _legendCollapsed = false;
-
-function toggleCountLegend(){
-  _legendCollapsed = !_legendCollapsed;
-  const body = document.getElementById('count-legend-body');
-  const toggle = document.getElementById('count-legend-toggle');
-  if(body) body.style.display = _legendCollapsed ? 'none' : 'block';
-  if(toggle) toggle.textContent = _legendCollapsed ? '▼' : '▲';
+function measurementCategory(m){
+  const act=ACTIVITIES.find(a=>a.id===m.actId);
+  const category=act?.cat?CAT_LABELS[act.cat]:'';
+  return category||act?.description||m.label||getItemType(m.type)?.name||'Measurement';
 }
-
-function updateCountLegend(){
-  const legend = document.getElementById('count-legend');
-  const items = document.getElementById('count-legend-items');
-  if(!legend || !items) return;
-
-  const isCount = measureTool === 'count';
-  legend.style.display = isCount ? 'block' : 'none';
-  if(!isCount) return;
-
-  // Get unique activity/colour combos from count measurements on current page
-  const countMeas = MEASUREMENTS.filter(m =>
-    m.type === 'count' &&
-    m.planId === activePlanId &&
-    m.page === activePlanPage
-  );
-
-  if(!countMeas.length){
-    items.innerHTML = '<div style="font-size:11px;color:var(--text4);padding:2px 0;">No counts yet on this page.</div>';
-    return;
-  }
-
-  // Group by actId — show activity name and colour
-  const seen = {};
-  countMeas.forEach(m => {
-    const key = m.actId || m.label;
-    if(!seen[key]){
-      const act = ACTIVITIES.find(a => a.id === m.actId);
-      seen[key] = {
-        label: act ? act.description : (m.label || 'Count'),
-        color: m.color || '#ffffff'
-      };
-    }
+function planLegendEntries(){
+  const seen=new Map();
+  MEASUREMENTS.filter(m=>m.planId===activePlanId&&m.page===activePlanPage&&!m.hidden&&m.type!=='calibrate'&&m.points?.length).forEach(m=>{
+    const profile=measurementProfile(m);
+    // The legend is a key for used count symbols, not a list of measurements.
+    if(m.mode!=='count'||!profile.symbol) return;
+    const color=getTypeColor(m.type,m);
+    const act=ACTIVITIES.find(a=>a.id===m.actId);
+    const bill=BILLS.find(b=>b.id===act?.bill);
+    const label=bill?billDisplayName(bill.name):measurementCategory(m);
+    const marker=profile.symbol;
+    const key=JSON.stringify([bill?.id||act?.bill||label,marker]);
+    if(!seen.has(key)) seen.set(key,{label,marker,color,visual:profile.visual});
   });
-
-  items.innerHTML = Object.values(seen).map(e =>
-    `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">
-      <div style="width:10px;height:10px;border-radius:50%;background:${e.color};flex-shrink:0;"></div>
-      <span style="font-size:11px;color:var(--text3);line-height:1.3;">${e.label}</span>
-    </div>`
-  ).join('');
+  return [...seen.values()];
+}
+function planLegendHTML(){
+  return planLegendEntries().map(e=>{
+    const symbol=e.marker
+      ?`<span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;border-radius:50%;background:${escHtml(e.color)};color:#111;font-weight:bold;font-size:10px;padding:0 3px;">${escHtml(e.marker)}</span>`
+      :`<span style="display:inline-block;width:22px;height:${e.visual==='area-fill'?12:e.visual==='wall-thick'?6:2}px;background:${escHtml(e.color)};opacity:${e.visual==='wall-thick'?0.6:1};"></span>`;
+    return `<span style="display:inline-flex;align-items:center;gap:6px;break-inside:avoid;">${symbol}<span>${escHtml(e.label)}</span></span>`;
+  }).join('');
+}
+function updateCountLegend(){
+  const legend=document.getElementById('count-legend');
+  const items=document.getElementById('count-legend-items');
+  if(!legend||!items) return;
+  const html=planLegendHTML();
+  legend.style.display=html?'block':'none';
+  items.innerHTML=html;
 }
 
 function startOptionalScaleCheck(){
@@ -6188,7 +6232,7 @@ function restoreAppState(data){
   if(EDGEBOOK_DIRTY) markEdgeBookDirty();
   // Normalise cat values — convert display names to keys
   ACTIVITIES.forEach(a=>{
-    a.captureMethod=normaliseCaptureMethod(a.captureMethod);
+    normaliseActivityCapture(a);
     delete a.active;
     if(a.cat&&!a.cat.includes('__')){
       const key=Object.keys(CAT_LABELS).find(k=>CAT_LABELS[k]===a.cat&&CAT_BILL[k]===a.bill);
@@ -6387,7 +6431,7 @@ function applySavedEdgeBook(saved){
   CAT_ORDER.splice(0,CAT_ORDER.length,...(book.CAT_ORDER||[]));
   actNextId=Math.max(Number(book.actNextId)||1,1,...ACTIVITIES.map(a=>(Number(a.id)||0)+1));
   billNextId=Math.max(Number(book.billNextId)||1,1,...BILLS.map(b=>(Number(String(b.id).replace(/^b/,''))||0)+1));
-  ACTIVITIES.forEach(a=>{a.captureMethod=normaliseCaptureMethod(a.captureMethod);delete a.active;});
+  ACTIVITIES.forEach(a=>{normaliseActivityCapture(a);delete a.active;});
   measureContext.actId=null;
   markEdgeBookSaved(saved.id,saved.name);
   renderContextBar();renderMeasurementsList();
@@ -6442,7 +6486,7 @@ async function useSavedEdgeBookInProject(id,{showMessage=true}={}){
       ? `Replace this project's EdgeBook with "${saved.name}"? ${tagged} unsent measurement${tagged===1?'':'s'} will lose their activity tags, but their geometry and quantities will stay on the plan. The saved library book will not change.`
       : `Replace this project's EdgeBook with "${saved.name}"? Your saved library book and untagged measurements will not change.`;
     if((BILLS.length||ACTIVITIES.length||tagged)&&!confirm(warning)) return false;
-    if(tagged) MEASUREMENTS.forEach(m=>{if(!m.sent){m.actId=null;m.captureMethod=null;m.annotationStyle=null;}});
+    if(tagged) MEASUREMENTS.forEach(m=>{if(!m.sent){m.actId=null;m.captureMethod=null;m.countMarker=null;m.annotationStyle=null;}});
     applySavedEdgeBook(saved);
     saveToStorage();switchTab('manage-bills');
     if(showMessage)alert(`✓ "${saved.name}" is now used in this project. Untagged plan measurements are still here for you to classify.`);
